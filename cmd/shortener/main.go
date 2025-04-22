@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -45,7 +46,7 @@ func handlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Empty URL", http.StatusBadRequest)
 		return
 	}
-	id := generateShortID(originalURL)
+	id := generateShortID()
 	urlStore[id] = originalURL
 	shortURL := fmt.Sprintf("http://localhost:8080/%s", id)
 	w.Header().Set("Content-Type", "text/plain")
@@ -70,10 +71,14 @@ func handleGetURL(w http.ResponseWriter, r *http.Request) {
 }
 
 // Генерирует короткий ID из URL
-func generateShortID(url string) string {
-	encoded := base64.URLEncoding.EncodeToString([]byte(url))
-	if len(encoded) > 8 {
-		encoded = encoded[:8]
+func generateShortID() string {
+	// Генерируем случайные 8 байт
+	bytes := make([]byte, 8)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		panic(err)
 	}
-	return encoded
+	// Кодируем в base64 и обрезаем
+	encoded := base64.URLEncoding.EncodeToString(bytes)
+	return encoded[:8]
 }
