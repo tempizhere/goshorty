@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // Хранилище для пар "короткий ID — URL"
@@ -31,7 +33,7 @@ func handlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
 		return
 	}
-	if r.Header.Get("Content-Type") != "text/plain" {
+	if !strings.Contains(r.Header.Get("Content-Type"), "text/plain") {
 		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
 		return
 	}
@@ -45,7 +47,11 @@ func handlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Empty URL", http.StatusBadRequest)
 		return
 	}
-	id := generateShortID(originalURL)
+	id, err := generateShortID()
+	if err != nil {
+		http.Error(w, "Failed to generate ID", http.StatusInternalServerError)
+		return
+	}
 	urlStore[id] = originalURL
 	shortURL := fmt.Sprintf("http://localhost:8080/%s", id)
 	w.Header().Set("Content-Type", "text/plain")
@@ -70,10 +76,12 @@ func handleGetURL(w http.ResponseWriter, r *http.Request) {
 }
 
 // Генерирует короткий ID из URL
-func generateShortID(url string) string {
-	encoded := base64.URLEncoding.EncodeToString([]byte(url))
-	if len(encoded) > 8 {
-		encoded = encoded[:8]
+func generateShortID() (string, error) {
+	bytes := make([]byte, 8)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
 	}
-	return encoded
+	encoded := base64.URLEncoding.EncodeToString(bytes)
+	return encoded[:8], nil
 }
