@@ -2,13 +2,14 @@ package main
 
 import (
 	"errors"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/tempizhere/goshorty/cmd/shortener/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
 )
 
 // errorReader симулирует ошибку чтения
@@ -19,13 +20,22 @@ func (er *errorReader) Read(p []byte) (n int, err error) {
 }
 
 // Тесты для handlePostURL
+// Тесты для handlePostURL и handleJSONShorten
+// Тесты для handlePostURL и handleJSONShorten
 func TestHandlePostURL(t *testing.T) {
+	// Создаём конфигурацию
+	cfg := &config.Config{
+		RunAddr: ":8080",
+		BaseURL: "http://localhost:8080",
+	}
+
 	// Таблица тестов
 	tests := []struct {
 		name           string
 		method         string
 		contentType    string
 		body           io.Reader
+		isJSON         bool
 		expectedCode   int
 		expectedBody   string
 		expectedStored bool
@@ -35,6 +45,7 @@ func TestHandlePostURL(t *testing.T) {
 			method:         http.MethodPost,
 			contentType:    "text/plain",
 			body:           strings.NewReader("https://example.com"),
+			isJSON:         false,
 			expectedCode:   http.StatusCreated,
 			expectedStored: true,
 		},
@@ -43,6 +54,7 @@ func TestHandlePostURL(t *testing.T) {
 			method:       http.MethodGet,
 			contentType:  "text/plain",
 			body:         nil,
+			isJSON:       false,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Method not allowed\n",
 		},
@@ -51,6 +63,7 @@ func TestHandlePostURL(t *testing.T) {
 			method:       http.MethodPost,
 			contentType:  "application/json",
 			body:         strings.NewReader("https://example.com"),
+			isJSON:       false,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Content-Type must be text/plain\n",
 		},
@@ -59,6 +72,7 @@ func TestHandlePostURL(t *testing.T) {
 			method:       http.MethodPost,
 			contentType:  "text/plain",
 			body:         strings.NewReader(""),
+			isJSON:       false,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Empty URL\n",
 		},
@@ -66,15 +80,26 @@ func TestHandlePostURL(t *testing.T) {
 			name:         "ReadBodyError",
 			method:       http.MethodPost,
 			contentType:  "text/plain",
-			body:         &errorReader{},
+			body:         strings.NewReader("https://example.com"),
+			isJSON:       false,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Failed to read request body\n",
+		},
+		{
+			name:           "JSONSuccess",
+			method:         http.MethodPost,
+			contentType:    "application/json",
+			body:           strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:         true,
+			expectedCode:   http.StatusCreated,
+			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
+			expectedStored: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем urlStore
+			// Очищаем urlStore (придуманное имя)
 			urlStore = make(map[string]string)
 
 			// Создаём запрос
@@ -82,17 +107,30 @@ func TestHandlePostURL(t *testing.T) {
 			req.Header.Set("Content-Type", tt.contentType)
 			rr := httptest.NewRecorder()
 
+			// Для ReadBodyError подменяем тело запроса
+			if tt.name == "ReadBodyError" {
+				req.Body = io.NopCloser(&errorReader{})
+			}
+
 			// Вызываем обработчик
-			handlePostURL(rr, req)
+			if tt.isJSON {
+				handleJSONShorten(rr, req, cfg)
+			} else {
+				handlePostURL(rr, req, cfg)
+			}
 
 			// Проверяем результаты
 			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
 			if tt.expectedBody != "" {
-				assert.Equal(t, tt.expectedBody, rr.Body.String(), "Body mismatch")
+				if tt.isJSON {
+					assert.Contains(t, rr.Body.String(), tt.expectedBody, "Expected JSON response with short URL")
+				} else {
+					assert.Equal(t, tt.expectedBody, rr.Body.String(), "Body mismatch")
+				}
 			}
 			if tt.expectedStored {
 				assert.NotEmpty(t, urlStore, "Expected URL to be stored")
-				assert.Contains(t, rr.Body.String(), tt.expectedBody, "Expected short URL")
+				assert.Contains(t, rr.Body.String(), cfg.BaseURL, "Expected short URL to contain BaseURL")
 			}
 		})
 	}
@@ -126,7 +164,7 @@ func TestHandleGetURL(t *testing.T) {
 			path:         "/testID",
 			storeSetup:   func() {},
 			expectedCode: http.StatusMethodNotAllowed, // 405
-			expectedBody: "", // Пустое тело
+			expectedBody: "",                          // Пустое тело
 		},
 		{
 			name:         "NotFound",
@@ -185,6 +223,67 @@ func TestHandleGetURL(t *testing.T) {
 			if tt.expectedLoc != "" {
 				assert.Equal(t, tt.expectedLoc, resp.Header.Get("Location"), "Location header mismatch")
 			}
+		})
+	}
+}
+func TestHandleJSONExpand(t *testing.T) {
+	cfg := &config.Config{
+		RunAddr: ":8080",
+		BaseURL: "http://localhost:8080",
+	}
+	tests := []struct {
+		name         string
+		method       string
+		path         string
+		storeSetup   func()
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:   "Success",
+			method: http.MethodGet,
+			path:   "/api/expand/testID",
+			storeSetup: func() {
+				urlStore["testID"] = "https://example.com"
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: `{"url":"https://example.com"}`,
+		},
+		{
+			name:         "NotFound",
+			method:       http.MethodGet,
+			path:         "/api/expand/unknownID",
+			storeSetup:   func() {},
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"error":"URL not found"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			urlStore = make(map[string]string)
+			tt.storeSetup()
+			r := chi.NewRouter()
+			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
+				handleJSONExpand(w, r, cfg)
+			})
+			server := httptest.NewServer(r)
+			defer server.Close()
+			client := &http.Client{}
+			req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed to send request: %v", err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("Failed to read response body: %v", err)
+			}
+			assert.Equal(t, tt.expectedCode, resp.StatusCode, "Status code mismatch")
+			assert.Equal(t, tt.expectedBody, string(body), "Body mismatch")
 		})
 	}
 }
