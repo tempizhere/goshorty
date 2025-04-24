@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"github.com/go-chi/chi/v5"
 )
 
 // Хранилище для пар "короткий ID — URL"
@@ -12,14 +13,14 @@ var urlStore = make(map[string]string)
 
 func main() {
 	// Создаём маршрутизатор
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
 
 	// Регистрируем обработчики
-	mux.HandleFunc("/", handlePostURL)
-	mux.HandleFunc("/{id}", handleGetURL)
+	r.Post("/", handlePostURL)
+	r.Get("/{id}", handleGetURL)
 
 	// Запускаем сервер на порту 8080
-	err := http.ListenAndServe(":8080", mux)
+	err := http.ListenAndServe(":8080", r)
 	if err != nil {
 		panic(err)
 	}
@@ -59,7 +60,7 @@ func handleGetURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
 		return
 	}
-	id := r.URL.Path[1:]
+	id := chi.URLParam(r, "id")
 	originalURL, exists := urlStore[id]
 	if !exists {
 		http.Error(w, "URL not found", http.StatusBadRequest)
