@@ -2,13 +2,14 @@ package main
 
 import (
 	"errors"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/tempizhere/goshorty/cmd/shortener/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
 )
 
 // errorReader симулирует ошибку чтения
@@ -20,6 +21,10 @@ func (er *errorReader) Read(p []byte) (n int, err error) {
 
 // Тесты для handlePostURL
 func TestHandlePostURL(t *testing.T) {
+
+	// Создаём конфигурацию
+	cfg := config.NewConfig()
+
 	// Таблица тестов
 	tests := []struct {
 		name           string
@@ -83,7 +88,7 @@ func TestHandlePostURL(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			// Вызываем обработчик
-			handlePostURL(rr, req)
+			handlePostURL(rr, req, cfg)
 
 			// Проверяем результаты
 			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
@@ -126,7 +131,7 @@ func TestHandleGetURL(t *testing.T) {
 			path:         "/testID",
 			storeSetup:   func() {},
 			expectedCode: http.StatusMethodNotAllowed, // 405
-			expectedBody: "", // Пустое тело
+			expectedBody: "",                          // Пустое тело
 		},
 		{
 			name:         "NotFound",

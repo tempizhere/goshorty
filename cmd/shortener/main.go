@@ -4,9 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/cmd/shortener/config"
 	"io"
 	"net/http"
-	"github.com/go-chi/chi/v5"
 	"strings"
 )
 
@@ -14,22 +15,25 @@ import (
 var urlStore = make(map[string]string)
 
 func main() {
+	// Получаем конфигурацию
+	cfg := config.NewConfig()
+
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
 
 	// Регистрируем обработчики
-	r.Post("/", handlePostURL)
-	r.Get("/{id}", handleGetURL)
+	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+		handlePostURL(w, r, cfg)
+	})
 
-	// Запускаем сервер на порту 8080
-	err := http.ListenAndServe(":8080", r)
+	err := http.ListenAndServe(cfg.RunAddr, r)
 	if err != nil {
 		panic(err)
 	}
 }
 
 // Обработчик POST-запросов на "/"
-func handlePostURL(w http.ResponseWriter, r *http.Request) {
+func handlePostURL(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
 		return
@@ -54,7 +58,7 @@ func handlePostURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	urlStore[id] = originalURL
-	shortURL := fmt.Sprintf("http://localhost:8080/%s", id)
+	shortURL := fmt.Sprintf("%s/%s", cfg.BaseURL, id)
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	fmt.Fprint(w, shortURL)
