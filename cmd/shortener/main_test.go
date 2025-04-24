@@ -9,6 +9,7 @@ import (
 	"testing"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/tempizhere/goshorty/cmd/shortener/config"
 )
 
 // errorReader симулирует ошибку чтения
@@ -36,6 +37,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "text/plain",
 			body:           strings.NewReader("https://example.com"),
 			expectedCode:   http.StatusCreated,
+			expectedBody:   "http://localhost:8080/aHR0cHM6",
 			expectedStored: true,
 		},
 		{
@@ -66,7 +68,7 @@ func TestHandlePostURL(t *testing.T) {
 			name:         "ReadBodyError",
 			method:       http.MethodPost,
 			contentType:  "text/plain",
-			body:         &errorReader{},
+			body: strings.NewReader("https://example.com"),
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Failed to read request body\n",
 		},
@@ -77,13 +79,24 @@ func TestHandlePostURL(t *testing.T) {
 			// Очищаем urlStore
 			urlStore = make(map[string]string)
 
+			// Создаём тестовую конфигурацию
+			cfg := &config.Config{
+				RunAddr: ":8080",
+				BaseURL: "http://localhost:8080",
+			}
+
 			// Создаём запрос
 			req := httptest.NewRequest(tt.method, "/", tt.body)
 			req.Header.Set("Content-Type", tt.contentType)
 			rr := httptest.NewRecorder()
 
+			// Для ReadBodyError подменяем тело запроса
+			if tt.name == "ReadBodyError" {
+				req.Body = io.NopCloser(&errorReader{})
+			}
+
 			// Вызываем обработчик
-			handlePostURL(rr, req)
+			handlePostURL(rr, req, cfg)
 
 			// Проверяем результаты
 			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
@@ -187,4 +200,160 @@ func TestHandleGetURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleJSONShorten(t *testing.T) {
+    // Таблица тестов
+    tests := []struct {
+        name         string
+        method       string
+        contentType  string
+        body         string
+        expectedCode int
+        expectedBody string
+        expectedErr  string
+    }{
+        {
+            name:        "Success",
+            method:      http.MethodPost,
+            contentType: "application/json",
+            body:        `{"url": "https://example.com"}`,
+            expectedCode: http.StatusCreated,
+            expectedBody: `{"result":"http://localhost:8080/aHR0cHM6"}`,
+        },
+        {
+            name:         "InvalidMethod",
+            method:       http.MethodGet,
+            contentType:  "application/json",
+            body:         `{"url": "https://example.com"}`,
+            expectedCode: http.StatusMethodNotAllowed,
+            expectedErr:  "Method not allowed\n",
+        },
+        {
+            name:         "InvalidContentType",
+            method:       http.MethodPost,
+            contentType:  "text/plain",
+            body:         `{"url": "https://example.com"}`,
+            expectedCode: http.StatusBadRequest,
+            expectedErr:  "Content-Type must be application/json\n",
+        },
+        {
+            name:         "EmptyURL",
+            method:       http.MethodPost,
+            contentType:  "application/json",
+            body:         `{"url": ""}`,
+            expectedCode: http.StatusBadRequest,
+            expectedErr:  "URL is required\n",
+        },
+        {
+            name:         "InvalidJSON",
+            method:       http.MethodPost,
+            contentType:  "application/json",
+            body:         `{"url": "https://example.com"`, // Некорректный JSON
+            expectedCode: http.StatusBadRequest,
+            expectedErr:  "Failed to decode JSON\n",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Очищаем urlStore
+            urlStore = make(map[string]string)
+
+            // Создаём тестовую конфигурацию
+            cfg := &config.Config{
+                RunAddr: ":8080",
+                BaseURL: "http://localhost:8080",
+            }
+
+            // Создаём запрос
+            req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
+            req.Header.Set("Content-Type", tt.contentType)
+            rr := httptest.NewRecorder()
+
+            // Вызываем обработчик
+            handleJSONShorten(rr, req, cfg)
+
+            // Проверяем результаты
+            assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
+            if tt.expectedErr != "" {
+                assert.Equal(t, tt.expectedErr, rr.Body.String(), "Error message mismatch")
+            } else {
+                assert.Equal(t, tt.expectedBody, strings.TrimSpace(rr.Body.String()), "Body mismatch")
+            }
+        })
+    }
+}
+
+func TestHandleJSONExpand(t *testing.T) {
+    // Таблица тестов
+    tests := []struct {
+        name         string
+        method       string
+        query        string
+        storeSetup   func()
+        expectedCode int
+        expectedLoc  string
+        expectedErr  string
+    }{
+        {
+            name:   "Success",
+            method: http.MethodGet,
+            query:  "?id=testID",
+            storeSetup: func() {
+                urlStore["testID"] = "https://example.com"
+            },
+            expectedCode: http.StatusTemporaryRedirect,
+            expectedLoc:  "https://example.com",
+        },
+        {
+            name:         "InvalidMethod",
+            method:       http.MethodPost,
+            query:        "?id=testID",
+            storeSetup:   func() {},
+            expectedCode: http.StatusMethodNotAllowed,
+            expectedErr:  "Method not allowed\n",
+        },
+        {
+            name:         "MissingID",
+            method:       http.MethodGet,
+            query:        "",
+            storeSetup:   func() {},
+            expectedCode: http.StatusBadRequest,
+            expectedErr:  "ID parameter is required\n",
+        },
+        {
+            name:         "NotFound",
+            method:       http.MethodGet,
+            query:        "?id=unknownID",
+            storeSetup:   func() {},
+            expectedCode: http.StatusNotFound,
+            expectedErr:  "URL not found\n",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Очищаем urlStore
+            urlStore = make(map[string]string)
+            // Настраиваем urlStore
+            tt.storeSetup()
+
+            // Создаём запрос
+            req := httptest.NewRequest(tt.method, "/api/expand"+tt.query, nil)
+            rr := httptest.NewRecorder()
+
+            // Вызываем обработчик напрямую
+            handleJSONExpand(rr, req)
+
+            // Проверяем результаты
+            assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
+            if tt.expectedErr != "" {
+                assert.Equal(t, tt.expectedErr, rr.Body.String(), "Error message mismatch")
+            }
+            if tt.expectedLoc != "" {
+                assert.Equal(t, tt.expectedLoc, rr.Header().Get("Location"), "Location header mismatch")
+            }
+        })
+    }
 }
