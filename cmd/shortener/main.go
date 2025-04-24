@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"github.com/go-chi/chi/v5"
-	"strings"
+)
 
 // Хранилище для пар "короткий ID — URL"
 var urlStore = make(map[string]string)
