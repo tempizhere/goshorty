@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -125,8 +125,8 @@ func TestHandleGetURL(t *testing.T) {
 			method:       http.MethodPost,
 			path:         "/testID",
 			storeSetup:   func() {},
-			expectedCode: http.StatusBadRequest,
-			expectedBody: "Method not allowed\n",
+			expectedCode: http.StatusMethodNotAllowed, // 405
+			expectedBody: "", // Пустое тело
 		},
 		{
 			name:         "NotFound",
@@ -145,20 +145,45 @@ func TestHandleGetURL(t *testing.T) {
 			// Настраиваем urlStore
 			tt.storeSetup()
 
-			// Создаём запрос
-			req := httptest.NewRequest(tt.method, tt.path, nil)
-			rr := httptest.NewRecorder()
+			// Создаём маршрутизатор chi
+			r := chi.NewRouter()
+			r.Get("/{id}", handleGetURL)
 
-			// Вызываем обработчик
-			handleGetURL(rr, req)
+			// Создаём тестовый сервер
+			server := httptest.NewServer(r)
+			defer server.Close()
+
+			// Создаём клиент
+			client := &http.Client{
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse // Не следовать редиректам
+				},
+			}
+
+			// Отправляем запрос
+			req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed to send request: %v", err)
+			}
+			defer resp.Body.Close()
+
+			// Читаем тело ответа
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("Failed to read response body: %v", err)
+			}
 
 			// Проверяем результаты
-			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
+			assert.Equal(t, tt.expectedCode, resp.StatusCode, "Status code mismatch")
 			if tt.expectedBody != "" {
-				assert.Equal(t, tt.expectedBody, rr.Body.String(), "Body mismatch")
+				assert.Equal(t, tt.expectedBody, string(body), "Body mismatch")
 			}
 			if tt.expectedLoc != "" {
-				assert.Equal(t, tt.expectedLoc, rr.Header().Get("Location"), "Location header mismatch")
+				assert.Equal(t, tt.expectedLoc, resp.Header.Get("Location"), "Location header mismatch")
 			}
 		})
 	}
