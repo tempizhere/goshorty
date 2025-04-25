@@ -20,8 +20,6 @@ func (er *errorReader) Read(p []byte) (n int, err error) {
 }
 
 // Тесты для handlePostURL
-// Тесты для handlePostURL и handleJSONShorten
-// Тесты для handlePostURL и handleJSONShorten
 func TestHandlePostURL(t *testing.T) {
 	// Создаём конфигурацию
 	cfg := &config.Config{
