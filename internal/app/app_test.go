@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ func (er *errorReader) Read(p []byte) (n int, err error) {
 	return 0, errors.New("read error")
 }
 
-// Тесты для handlePostURL
+// Тесты для HandlePostURL и HandleJSONShorten
 func TestHandlePostURL(t *testing.T) {
 	// Создаём конфигурацию
 	cfg := &config.Config{
@@ -97,8 +97,8 @@ func TestHandlePostURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем urlStore (придуманное имя)
-			urlStore = make(map[string]string)
+			// Очищаем UrlStore
+			UrlStore = make(map[string]string)
 
 			// Создаём запрос
 			req := httptest.NewRequest(tt.method, "/", tt.body)
@@ -112,9 +112,9 @@ func TestHandlePostURL(t *testing.T) {
 
 			// Вызываем обработчик
 			if tt.isJSON {
-				handleJSONShorten(rr, req, cfg)
+				HandleJSONShorten(rr, req, cfg)
 			} else {
-				handlePostURL(rr, req, cfg)
+				HandlePostURL(rr, req, cfg)
 			}
 
 			// Проверяем результаты
@@ -127,14 +127,14 @@ func TestHandlePostURL(t *testing.T) {
 				}
 			}
 			if tt.expectedStored {
-				assert.NotEmpty(t, urlStore, "Expected URL to be stored")
+				assert.NotEmpty(t, UrlStore, "Expected URL to be stored")
 				assert.Contains(t, rr.Body.String(), cfg.BaseURL, "Expected short URL to contain BaseURL")
 			}
 		})
 	}
 }
 
-// Тесты для handleGetURL
+// Тесты для HandleGetURL
 func TestHandleGetURL(t *testing.T) {
 	// Таблица тестов
 	tests := []struct {
@@ -151,7 +151,7 @@ func TestHandleGetURL(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/testID",
 			storeSetup: func() {
-				urlStore["testID"] = "https://example.com"
+				UrlStore["testID"] = "https://example.com"
 			},
 			expectedCode: http.StatusTemporaryRedirect,
 			expectedLoc:  "https://example.com",
@@ -176,14 +176,16 @@ func TestHandleGetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем urlStore
-			urlStore = make(map[string]string)
-			// Настраиваем urlStore
+			// Очищаем UrlStore (придуманное имя)
+			UrlStore = make(map[string]string)
+			// Настраиваем UrlStore
 			tt.storeSetup()
 
 			// Создаём маршрутизатор chi
 			r := chi.NewRouter()
-			r.Get("/{id}", handleGetURL)
+			r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+				HandleGetURL(w, r)
+			})
 
 			// Создаём тестовый сервер
 			server := httptest.NewServer(r)
@@ -224,6 +226,7 @@ func TestHandleGetURL(t *testing.T) {
 		})
 	}
 }
+
 func TestHandleJSONExpand(t *testing.T) {
 	cfg := &config.Config{
 		RunAddr: ":8080",
@@ -242,7 +245,7 @@ func TestHandleJSONExpand(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/api/expand/testID",
 			storeSetup: func() {
-				urlStore["testID"] = "https://example.com"
+				UrlStore["testID"] = "https://example.com"
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: `{"url":"https://example.com"}`,
@@ -258,11 +261,11 @@ func TestHandleJSONExpand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			urlStore = make(map[string]string)
+			UrlStore = make(map[string]string)
 			tt.storeSetup()
 			r := chi.NewRouter()
 			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
-				handleJSONExpand(w, r, cfg)
+				HandleJSONExpand(w, r, cfg)
 			})
 			server := httptest.NewServer(r)
 			defer server.Close()
