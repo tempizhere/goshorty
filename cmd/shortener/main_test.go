@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
-	"github.com/tempizhere/goshorty/cmd/shortener/config"
+	"github.com/tempizhere/goshorty/internal/config"
 	"io"
 	"net/http"
 	"net/http/httptest"

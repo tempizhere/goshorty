@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-chi/chi/v5"
-	"github.com/tempizhere/goshorty/cmd/shortener/config"
+	"github.com/tempizhere/goshorty/internal/config"
 	"io"
 	"net/http"
 	"strings"
