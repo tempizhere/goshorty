@@ -23,7 +23,7 @@ type ExpandResponse struct {
 }
 
 // Хранилище для пар "короткий ID — URL"
-var UrlStore = make(map[string]string) // придуманное имя, экспортировано
+var URLStore = make(map[string]string) // придуманное имя, экспортировано
 
 // Генерирует короткий ID из URL
 func GenerateShortID() (string, error) {
@@ -61,7 +61,7 @@ func HandlePostURL(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
 		http.Error(w, "Failed to generate ID", http.StatusInternalServerError)
 		return
 	}
-	UrlStore[id] = originalURL
+	URLStore[id] = originalURL
 	shortURL := strings.TrimRight(cfg.BaseURL, "/") + "/" + id
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -75,7 +75,7 @@ func HandleGetURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	originalURL, exists := UrlStore[id]
+	originalURL, exists := URLStore[id]
 	if !exists {
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
@@ -108,7 +108,7 @@ func HandleJSONShorten(w http.ResponseWriter, r *http.Request, cfg *config.Confi
 		http.Error(w, "Failed to generate ID", http.StatusInternalServerError)
 		return
 	}
-	UrlStore[id] = reqBody.URL
+	URLStore[id] = reqBody.URL
 	respBody := ShortenResponse{
 		Result: strings.TrimRight(cfg.BaseURL, "/") + "/" + id,
 	}
@@ -129,7 +129,7 @@ func HandleJSONExpand(w http.ResponseWriter, r *http.Request, cfg *config.Config
 		return
 	}
 	id := chi.URLParam(r, "id")
-	originalURL, exists := UrlStore[id]
+	originalURL, exists := URLStore[id]
 	if !exists {
 		respBody := struct {
 			Error string `json:"error"`

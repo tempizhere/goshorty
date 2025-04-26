@@ -97,8 +97,8 @@ func TestHandlePostURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем UrlStore
-			UrlStore = make(map[string]string)
+			// Очищаем URLStore
+			URLStore = make(map[string]string)
 
 			// Создаём запрос
 			req := httptest.NewRequest(tt.method, "/", tt.body)
@@ -127,7 +127,7 @@ func TestHandlePostURL(t *testing.T) {
 				}
 			}
 			if tt.expectedStored {
-				assert.NotEmpty(t, UrlStore, "Expected URL to be stored")
+				assert.NotEmpty(t, URLStore, "Expected URL to be stored")
 				assert.Contains(t, rr.Body.String(), cfg.BaseURL, "Expected short URL to contain BaseURL")
 			}
 		})
@@ -151,7 +151,7 @@ func TestHandleGetURL(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/testID",
 			storeSetup: func() {
-				UrlStore["testID"] = "https://example.com"
+				URLStore["testID"] = "https://example.com"
 			},
 			expectedCode: http.StatusTemporaryRedirect,
 			expectedLoc:  "https://example.com",
@@ -176,9 +176,9 @@ func TestHandleGetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем UrlStore (придуманное имя)
-			UrlStore = make(map[string]string)
-			// Настраиваем UrlStore
+			// Очищаем URLStore (придуманное имя)
+			URLStore = make(map[string]string)
+			// Настраиваем URLStore
 			tt.storeSetup()
 
 			// Создаём маршрутизатор chi
@@ -245,7 +245,7 @@ func TestHandleJSONExpand(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/api/expand/testID",
 			storeSetup: func() {
-				UrlStore["testID"] = "https://example.com"
+				URLStore["testID"] = "https://example.com"
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: `{"url":"https://example.com"}`,
@@ -261,7 +261,7 @@ func TestHandleJSONExpand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			UrlStore = make(map[string]string)
+			URLStore = make(map[string]string)
 			tt.storeSetup()
 			r := chi.NewRouter()
 			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
