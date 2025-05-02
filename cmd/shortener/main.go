@@ -4,28 +4,33 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
 	"github.com/tempizhere/goshorty/internal/config"
+	"github.com/tempizhere/goshorty/internal/repository"
+	"github.com/tempizhere/goshorty/internal/service"
 	"net/http"
 )
 
 func main() {
 	// Получаем конфигурацию
 	cfg := config.NewConfig()
+	repo := repository.NewMemoryRepository()
+	svc := service.NewService(repo, cfg.BaseURL)
+	appInstance := app.NewApp(svc)
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
 
 	// Регистрируем обработчики
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		app.HandlePostURL(w, r, cfg)
+		appInstance.HandlePostURL(w, r)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
-		app.HandleGetURL(w, r)
+		appInstance.HandleGetURL(w, r)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		app.HandleJSONShorten(w, r, cfg)
+		appInstance.HandleJSONShorten(w, r)
 	})
 	r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
-		app.HandleJSONExpand(w, r, cfg)
+		appInstance.HandleJSONExpand(w, r)
 	})
 	err := http.ListenAndServe(cfg.RunAddr, r)
 	if err != nil {
