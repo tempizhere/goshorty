@@ -4,6 +4,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
 	"github.com/tempizhere/goshorty/internal/config"
+	"github.com/tempizhere/goshorty/internal/log"
+	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
 	"net/http"
@@ -18,6 +20,12 @@ func main() {
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
+
+	// Инициализация логгера
+	logger := log.NewLogger()
+
+	// Применение middleware для логирования
+	r.Use(middleware.LoggingMiddleware(logger))
 
 	// Регистрируем обработчики
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
