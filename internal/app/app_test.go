@@ -33,7 +33,7 @@ func TestHandlePostURL(t *testing.T) {
 	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc)
 
-	// Таблица тестов
+	Ans // Таблица тестов
 	tests := []struct {
 		name           string
 		method         string
@@ -98,6 +98,24 @@ func TestHandlePostURL(t *testing.T) {
 			expectedCode:   http.StatusCreated,
 			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
 			expectedStored: true,
+		},
+		{
+			name:         "JSONInvalid",
+			method:       http.MethodPost,
+			contentType:  "application/json",
+			body:         strings.NewReader(`{invalid json}`),
+			isJSON:       true,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Invalid JSON\n",
+		},
+		{
+			name:         "JSONEmptyURL",
+			method:       http.MethodPost,
+			contentType:  "application/json",
+			body:         strings.NewReader(`{"url":""}`),
+			isJSON:       true,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "empty URL\n",
 		},
 	}
 
@@ -183,8 +201,8 @@ func TestHandleGetURL(t *testing.T) {
 			method:       http.MethodPost,
 			path:         "/testID",
 			storeSetup:   func() {},
-			expectedCode: http.StatusMethodNotAllowed, // 405
-			expectedBody: "",                          // Пустое тело
+			expectedCode: http.StatusMethodNotAllowed,
+			expectedBody: "",
 		},
 		{
 			name:         "NotFound",

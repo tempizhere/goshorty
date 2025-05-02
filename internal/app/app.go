@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/service"
 	"io"
@@ -30,6 +31,18 @@ func NewApp(svc *service.Service) *App {
 	return &App{svc: svc}
 }
 
+// createShortURL создаёт короткий URL и возвращает его или ошибку
+func (a *App) createShortURL(originalURL string) (string, error) {
+	if originalURL == "" {
+		return "", errors.New("empty URL")
+	}
+	shortURL, err := a.svc.CreateShortURL(originalURL)
+	if err != nil {
+		return "", err
+	}
+	return shortURL, nil
+}
+
 // Обработчик POST-запросов на "/"
 func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -45,8 +58,7 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	originalURL := string(body)
-	shortURL, err := a.svc.CreateShortURL(originalURL)
+	shortURL, err := a.createShortURL(string(body))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -90,7 +102,7 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.svc.CreateShortURL(reqBody.URL)
+	shortURL, err := a.createShortURL(reqBody.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
