@@ -36,10 +36,10 @@ func (s *Service) GenerateShortID() (string, error) {
 // CreateShortURLWithID создаёт короткий URL с заданным ID
 func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
 	if originalURL == "" {
-		return "", errors.New("Empty URL")
+		return "", errors.New("empty URL")
 	}
 	if id == "" {
-		return "", errors.New("Empty ID")
+		return "", errors.New("empty ID")
 	}
 	if _, exists := s.repo.Get(id); exists {
 		return "", errors.New("ID already exists")

@@ -42,7 +42,7 @@ func TestService(t *testing.T) {
 
 	// Тест CreateShortURL с пустым URL
 	_, err = svc.CreateShortURL("")
-	assert.EqualError(t, err, "Empty URL", "CreateShortURL should return Empty URL error")
+	assert.EqualError(t, err, "empty URL", "CreateShortURL should return empty URL error")
 
 	// Тест CreateShortURLWithID с ошибкой сохранения
 	_, err = svc.CreateShortURLWithID("https://fail.com", "fail")

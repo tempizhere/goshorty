@@ -78,7 +78,7 @@ func TestHandlePostURL(t *testing.T) {
 			body:         strings.NewReader(""),
 			isJSON:       false,
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "Empty URL\n",
+			expectedBody: "empty URL\n",
 		},
 		{
 			name:         "ReadBodyError",
