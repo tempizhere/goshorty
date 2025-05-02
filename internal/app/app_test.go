@@ -99,6 +99,24 @@ func TestHandlePostURL(t *testing.T) {
 			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
 			expectedStored: true,
 		},
+		{
+			name:         "JSONInvalid",
+			method:       http.MethodPost,
+			contentType:  "application/json",
+			body:         strings.NewReader(`{invalid json}`),
+			isJSON:       true,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Invalid JSON\n",
+		},
+		{
+			name:         "JSONEmptyURL",
+			method:       http.MethodPost,
+			contentType:  "application/json",
+			body:         strings.NewReader(`{"url":""}`),
+			isJSON:       true,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "empty URL\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -183,8 +201,8 @@ func TestHandleGetURL(t *testing.T) {
 			method:       http.MethodPost,
 			path:         "/testID",
 			storeSetup:   func() {},
-			expectedCode: http.StatusMethodNotAllowed, // 405
-			expectedBody: "",                          // Пустое тело
+			expectedCode: http.StatusMethodNotAllowed,
+			expectedBody: "",
 		},
 		{
 			name:         "NotFound",
