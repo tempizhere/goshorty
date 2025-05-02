@@ -33,7 +33,7 @@ func TestHandlePostURL(t *testing.T) {
 	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc)
 
-	Ans // Таблица тестов
+	// Таблица тестов
 	tests := []struct {
 		name           string
 		method         string
