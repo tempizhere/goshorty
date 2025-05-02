@@ -1,10 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/tempizhere/goshorty/internal/config"
+	"github.com/tempizhere/goshorty/internal/repository"
+	"github.com/tempizhere/goshorty/internal/service"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,11 +24,14 @@ func (er *errorReader) Read(p []byte) (n int, err error) {
 
 // Тесты для HandlePostURL и HandleJSONShorten
 func TestHandlePostURL(t *testing.T) {
-	// Создаём конфигурацию
+	// Создаём зависимости
 	cfg := &config.Config{
 		RunAddr: ":8080",
 		BaseURL: "http://localhost:8080",
 	}
+	var repo repository.Repository = repository.NewMemoryRepository()
+	svc := service.NewService(repo, cfg.BaseURL)
+	appInstance := NewApp(svc)
 
 	// Таблица тестов
 	tests := []struct {
@@ -97,8 +103,8 @@ func TestHandlePostURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем URLStore
-			URLStore = make(map[string]string)
+			// Очищаем хранилище
+			repo.Clear()
 
 			// Создаём запрос
 			req := httptest.NewRequest(tt.method, "/", tt.body)
@@ -112,9 +118,9 @@ func TestHandlePostURL(t *testing.T) {
 
 			// Вызываем обработчик
 			if tt.isJSON {
-				HandleJSONShorten(rr, req, cfg)
+				appInstance.HandleJSONShorten(rr, req)
 			} else {
-				HandlePostURL(rr, req, cfg)
+				appInstance.HandlePostURL(rr, req)
 			}
 
 			// Проверяем результаты
@@ -127,7 +133,17 @@ func TestHandlePostURL(t *testing.T) {
 				}
 			}
 			if tt.expectedStored {
-				assert.NotEmpty(t, URLStore, "Expected URL to be stored")
+				// Извлекаем ID из shortURL (последняя часть пути)
+				shortURL := rr.Body.String()
+				id := svc.ExtractIDFromShortURL(shortURL)
+				if tt.isJSON {
+					var resp ShortenResponse
+					err := json.Unmarshal(rr.Body.Bytes(), &resp)
+					assert.NoError(t, err, "Failed to unmarshal JSON response")
+					id = svc.ExtractIDFromShortURL(resp.Result)
+				}
+				_, exists := repo.Get(id)
+				assert.True(t, exists, "Expected URL to be stored")
 				assert.Contains(t, rr.Body.String(), cfg.BaseURL, "Expected short URL to contain BaseURL")
 			}
 		})
@@ -136,6 +152,11 @@ func TestHandlePostURL(t *testing.T) {
 
 // Тесты для HandleGetURL
 func TestHandleGetURL(t *testing.T) {
+	// Создаём зависимости
+	var repo repository.Repository = repository.NewMemoryRepository()
+	svc := service.NewService(repo, "http://localhost:8080")
+	appInstance := NewApp(svc)
+
 	// Таблица тестов
 	tests := []struct {
 		name         string
@@ -151,7 +172,8 @@ func TestHandleGetURL(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/testID",
 			storeSetup: func() {
-				URLStore["testID"] = "https://example.com"
+				err := repo.Save("testID", "https://example.com")
+				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusTemporaryRedirect,
 			expectedLoc:  "https://example.com",
@@ -176,15 +198,15 @@ func TestHandleGetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Очищаем URLStore (придуманное имя)
-			URLStore = make(map[string]string)
-			// Настраиваем URLStore
+			// Очищаем хранилище
+			repo.Clear()
+			// Настраиваем хранилище
 			tt.storeSetup()
 
 			// Создаём маршрутизатор chi
 			r := chi.NewRouter()
 			r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
-				HandleGetURL(w, r)
+				appInstance.HandleGetURL(w, r)
 			})
 
 			// Создаём тестовый сервер
@@ -228,10 +250,11 @@ func TestHandleGetURL(t *testing.T) {
 }
 
 func TestHandleJSONExpand(t *testing.T) {
-	cfg := &config.Config{
-		RunAddr: ":8080",
-		BaseURL: "http://localhost:8080",
-	}
+	// Создаём зависимости
+	var repo repository.Repository = repository.NewMemoryRepository()
+	svc := service.NewService(repo, "http://localhost:8080")
+	appInstance := NewApp(svc)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -245,7 +268,8 @@ func TestHandleJSONExpand(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/api/expand/testID",
 			storeSetup: func() {
-				URLStore["testID"] = "https://example.com"
+				err := repo.Save("testID", "https://example.com")
+				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: `{"url":"https://example.com"}`,
@@ -261,11 +285,12 @@ func TestHandleJSONExpand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			URLStore = make(map[string]string)
+			// Очищаем хранилище
+			repo.Clear()
 			tt.storeSetup()
 			r := chi.NewRouter()
 			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
-				HandleJSONExpand(w, r, cfg)
+				appInstance.HandleJSONExpand(w, r)
 			})
 			server := httptest.NewServer(r)
 			defer server.Close()
