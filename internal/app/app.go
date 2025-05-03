@@ -49,10 +49,6 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
 		return
 	}
-	if !strings.Contains(r.Header.Get("Content-Type"), "text/plain") {
-		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
-		return
-	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
