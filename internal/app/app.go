@@ -49,6 +49,15 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
 		return
 	}
+
+	// Проверяем Content-Type для сжатых запросов
+	if r.Header.Get("Content-Encoding") == "gzip" &&
+		!strings.Contains(r.Header.Get("Content-Type"), "text/plain") &&
+		!strings.Contains(r.Header.Get("Content-Type"), "application/x-gzip") {
+		http.Error(w, "Invalid Content-Type for gzip request", http.StatusBadRequest)
+		return
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -74,6 +83,10 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "Missing URL ID", http.StatusBadRequest)
+		return
+	}
 	originalURL, exists := a.svc.GetOriginalURL(id)
 	if !exists {
 		http.Error(w, "URL not found", http.StatusBadRequest)
@@ -91,6 +104,11 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+	// Проверяем, что запрос не сжат некорректно
+	if r.Header.Get("Content-Encoding") == "gzip" && !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Invalid Content-Type for gzip request", http.StatusBadRequest)
 		return
 	}
 	var reqBody ShortenRequest

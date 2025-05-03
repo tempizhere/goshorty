@@ -51,128 +51,208 @@ func TestHandlePostURL(t *testing.T) {
 
 	// Таблица тестов
 	tests := []struct {
-		name           string
-		method         string
-		url            string
-		contentType    string
-		body           io.Reader
-		isJSON         bool
-		useGzipRequest bool
-		expectedCode   int
-		expectedBody   string
-		expectedStored bool
+		name            string
+		method          string
+		url             string
+		contentType     string
+		body            io.Reader
+		isJSON          bool
+		useGzipRequest  bool
+		useGzipResponse bool
+		largeResponse   bool
+		expectedCode    int
+		expectedBody    string
+		expectedStored  bool
+		expectGzip      bool
 	}{
 		{
-			name:           "Success",
-			method:         http.MethodPost,
-			url:            "/",
-			contentType:    "text/plain",
-			body:           strings.NewReader("https://example.com"),
-			isJSON:         false,
-			useGzipRequest: false,
-			expectedCode:   http.StatusCreated,
-			expectedStored: true,
+			name:            "Success",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "text/plain",
+			body:            strings.NewReader("https://example.com"),
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedStored:  true,
+			expectGzip:      false,
 		},
 		{
-			name:           "InvalidMethod",
-			method:         http.MethodGet,
-			url:            "/",
-			contentType:    "text/plain",
-			body:           nil,
-			isJSON:         false,
-			useGzipRequest: false,
-			expectedCode:   http.StatusBadRequest,
-			expectedBody:   "Method not allowed\n",
+			name:            "InvalidMethod",
+			method:          http.MethodGet,
+			url:             "/",
+			contentType:     "text/plain",
+			body:            nil,
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "Method not allowed\n",
+			expectedStored:  false,
+			expectGzip:      false,
 		},
 		{
-			name:           "InvalidContentType",
-			method:         http.MethodPost,
-			url:            "/",
-			contentType:    "application/json",
-			body:           strings.NewReader("https://example.com"),
-			isJSON:         false,
-			useGzipRequest: false,
-			expectedCode:   http.StatusCreated,
-			expectedStored: true,
+			name:            "InvalidContentType",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "application/json",
+			body:            strings.NewReader("https://example.com"),
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedStored:  true,
+			expectGzip:      false,
 		},
 		{
-			name:           "EmptyBody",
-			method:         http.MethodPost,
-			url:            "/",
-			contentType:    "text/plain",
-			body:           strings.NewReader(""),
-			isJSON:         false,
-			useGzipRequest: false,
-			expectedCode:   http.StatusBadRequest,
-			expectedBody:   "empty URL\n",
+			name:            "EmptyBody",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "text/plain",
+			body:            strings.NewReader(""),
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "empty URL\n",
+			expectedStored:  false,
+			expectGzip:      false,
 		},
 		{
-			name:           "ReadBodyError",
-			method:         http.MethodPost,
-			url:            "/",
-			contentType:    "text/plain",
-			body:           strings.NewReader("https://example.com"),
-			isJSON:         false,
-			useGzipRequest: false,
-			expectedCode:   http.StatusBadRequest,
-			expectedBody:   "Failed to read request body\n",
+			name:            "ReadBodyError",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "text/plain",
+			body:            strings.NewReader("https://example.com"),
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "Failed to read request body\n",
+			expectedStored:  false,
+			expectGzip:      false,
 		},
 		{
-			name:           "JSONSuccess",
-			method:         http.MethodPost,
-			url:            "/api/shorten",
-			contentType:    "application/json",
-			body:           strings.NewReader(`{"url":"https://example.com"}`),
-			isJSON:         true,
-			useGzipRequest: false,
-			expectedCode:   http.StatusCreated,
-			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
-			expectedStored: true,
+			name:            "JSONSuccess",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:          true,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
+			expectedStored:  true,
+			expectGzip:      false,
 		},
 		{
-			name:           "JSONInvalid",
-			method:         http.MethodPost,
-			url:            "/api/shorten",
-			contentType:    "application/json",
-			body:           strings.NewReader(`{invalid json}`),
-			isJSON:         true,
-			useGzipRequest: false,
-			expectedCode:   http.StatusBadRequest,
-			expectedBody:   "Invalid JSON\n",
+			name:            "JSONInvalid",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            strings.NewReader(`{invalid json}`),
+			isJSON:          true,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "Invalid JSON\n",
+			expectGzip:      false,
 		},
 		{
-			name:           "JSONEmptyURL",
-			method:         http.MethodPost,
-			url:            "/api/shorten",
-			contentType:    "application/json",
-			body:           strings.NewReader(`{"url":""}`),
-			isJSON:         true,
-			useGzipRequest: false,
-			expectedCode:   http.StatusBadRequest,
-			expectedBody:   "empty URL\n",
+			name:            "JSONEmptyURL",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            strings.NewReader(`{"url":""}`),
+			isJSON:          true,
+			useGzipRequest:  false,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "empty URL\n",
+			expectGzip:      false,
 		},
 		{
-			name:           "GzipRequestJSONSuccess",
-			method:         http.MethodPost,
-			url:            "/api/shorten",
-			contentType:    "application/json",
-			body:           nil, // Будет установлено в тесте
-			isJSON:         true,
-			useGzipRequest: true,
-			expectedCode:   http.StatusCreated,
-			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
-			expectedStored: true,
+			name:            "GzipRequestJSONSuccess",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            nil, // Будет установлено в тесте
+			isJSON:          true,
+			useGzipRequest:  true,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
+			expectedStored:  true,
+			expectGzip:      false,
 		},
 		{
-			name:           "GzipRequestTextSuccess",
-			method:         http.MethodPost,
-			url:            "/",
-			contentType:    "application/x-gzip",
-			body:           nil, // Будет установлено в тесте
-			isJSON:         false,
-			useGzipRequest: true,
-			expectedCode:   http.StatusCreated,
-			expectedStored: true,
+			name:            "GzipRequestTextSuccess",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "application/x-gzip",
+			body:            nil, // Будет установлено в тесте
+			isJSON:          false,
+			useGzipRequest:  true,
+			useGzipResponse: false,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedStored:  true,
+			expectGzip:      false,
+		},
+		{
+			name:            "GzipResponseJSONSuccessLarge",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:          true,
+			useGzipRequest:  false,
+			useGzipResponse: true,
+			largeResponse:   true,
+			expectedCode:    http.StatusCreated,
+			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
+			expectedStored:  true,
+			expectGzip:      true,
+		},
+		{
+			name:            "GzipResponseJSONSmall",
+			method:          http.MethodPost,
+			url:             "/api/shorten",
+			contentType:     "application/json",
+			body:            strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:          true,
+			useGzipRequest:  false,
+			useGzipResponse: true,
+			largeResponse:   false,
+			expectedCode:    http.StatusCreated,
+			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
+			expectedStored:  true,
+			expectGzip:      false,
+		},
+		{
+			name:            "GzipResponseTextPlain",
+			method:          http.MethodPost,
+			url:             "/",
+			contentType:     "text/plain",
+			body:            strings.NewReader("https://example.com"),
+			isJSON:          false,
+			useGzipRequest:  false,
+			useGzipResponse: true,
+			largeResponse:   true,
+			expectedCode:    http.StatusCreated,
+			expectedStored:  true,
+			expectGzip:      false,
 		},
 	}
 
@@ -199,6 +279,9 @@ func TestHandlePostURL(t *testing.T) {
 			if tt.useGzipRequest {
 				req.Header.Set("Content-Encoding", "gzip")
 			}
+			if tt.useGzipResponse {
+				req.Header.Set("Accept-Encoding", "gzip")
+			}
 			rr := httptest.NewRecorder()
 
 			// Для ReadBodyError подменяем тело запроса
@@ -211,6 +294,46 @@ func TestHandlePostURL(t *testing.T) {
 			r.Use(middleware.GzipMiddleware)
 			if tt.isJSON {
 				r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
+					if tt.largeResponse {
+						// Создаём большой ответ (>1400 байт)
+						if r.Method != http.MethodPost {
+							http.Error(w, "Method not allowed", http.StatusBadRequest)
+							return
+						}
+						if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+							http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+							return
+						}
+						var reqBody ShortenRequest
+						if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+							http.Error(w, "Invalid JSON", http.StatusBadRequest)
+							return
+						}
+						shortURL, err := appInstance.createShortURL(reqBody.URL)
+						if err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+						respBody := struct {
+							Result string `json:"result"`
+							Filler string `json:"filler"`
+						}{
+							Result: shortURL,
+							Filler: strings.Repeat("x", 1400), // Наполнитель для размера > 1400 байт
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusCreated)
+						data, err := json.Marshal(respBody)
+						if err != nil {
+							http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+							return
+						}
+						if _, err := w.Write(data); err != nil {
+							http.Error(w, "Failed to write response", http.StatusInternalServerError)
+							return
+						}
+						return
+					}
 					appInstance.HandleJSONShorten(w, r)
 				})
 			} else {
@@ -229,27 +352,44 @@ func TestHandlePostURL(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
 
 			// Читаем тело ответа
-			responseBody := rr.Body.String()
+			responseBody := rr.Body.Bytes()
+			var responseString string
+
+			// Если ожидается сжатый ответ, распаковываем его
+			if tt.expectGzip {
+				assert.Equal(t, "gzip", rr.Header().Get("Content-Encoding"), "Expected gzip Content-Encoding")
+				gz, err := gzip.NewReader(bytes.NewReader(responseBody))
+				assert.NoError(t, err, "Failed to create gzip reader")
+				defer gz.Close()
+				decompressed, err := io.ReadAll(gz)
+				assert.NoError(t, err, "Failed to decompress response")
+				responseString = string(decompressed)
+			} else {
+				responseString = string(responseBody)
+			}
 
 			if tt.expectedBody != "" {
 				if tt.isJSON {
-					assert.Contains(t, responseBody, tt.expectedBody, "Expected JSON response with short URL")
+					assert.Contains(t, responseString, tt.expectedBody, "Expected JSON response with short URL")
 				} else {
-					assert.Equal(t, tt.expectedBody, responseBody, "Body mismatch")
+					assert.Equal(t, tt.expectedBody, responseString, "Expected exact response body")
 				}
 			}
 			if tt.expectedStored {
 				// Извлекаем ID из shortURL
-				id := svc.ExtractIDFromShortURL(responseBody)
+				id := svc.ExtractIDFromShortURL(responseString)
 				if tt.isJSON {
-					var resp ShortenResponse
-					err := json.Unmarshal([]byte(responseBody), &resp)
+					var resp struct {
+						Result string `json:"result"`
+						Filler string `json:"filler,omitempty"`
+					}
+					err := json.Unmarshal([]byte(responseString), &resp)
 					assert.NoError(t, err, "Failed to unmarshal JSON response")
 					id = svc.ExtractIDFromShortURL(resp.Result)
 				}
 				_, exists := repo.Get(id)
 				assert.True(t, exists, "Expected URL to be stored")
-				assert.Contains(t, responseBody, cfg.BaseURL, "Expected short URL to contain BaseURL")
+				assert.Contains(t, responseString, cfg.BaseURL, "Expected short URL to contain BaseURL")
 			}
 		})
 	}
@@ -391,6 +531,7 @@ func TestHandleJSONExpand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Очищаем хранилище
 			repo.Clear()
+			// Настраиваем хранилище
 			tt.storeSetup()
 			r := chi.NewRouter()
 			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
