@@ -182,7 +182,7 @@ func TestHandlePostURL(t *testing.T) {
 			repo.Clear()
 
 			// Подготавливаем сжатое тело для GzipRequest
-			var requestBody io.Reader = tt.body
+			var requestBody = tt.body
 			if tt.useGzipRequest {
 				data := `{"url":"https://example.com"}`
 				if !tt.isJSON {
