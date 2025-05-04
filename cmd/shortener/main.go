@@ -8,21 +8,33 @@ import (
 	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
+	"go.uber.org/zap"
 	"net/http"
 )
 
 func main() {
 	// Получаем конфигурацию
-	cfg := config.NewConfig()
-	repo := repository.NewMemoryRepository()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		logger := log.NewLogger()
+		logger.Fatal("Failed to initialize configuration", zap.Error(err))
+	}
+
+	// Инициализация логгера
+	logger := log.NewLogger()
+
+	// Создаём репозиторий
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
+	if err != nil {
+		logger.Fatal("Failed to initialize file repository", zap.Error(err))
+	}
+
+	// Создаём зависимости
 	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := app.NewApp(svc)
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
-
-	// Инициализация логгера
-	logger := log.NewLogger()
 
 	// Применение middleware
 	r.Use(middleware.GzipMiddleware)
@@ -47,8 +59,9 @@ func main() {
 	r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleJSONExpand(w, r)
 	})
-	err := http.ListenAndServe(cfg.RunAddr, r)
+
+	err = http.ListenAndServe(cfg.RunAddr, r)
 	if err != nil {
-		panic(err)
+		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 }

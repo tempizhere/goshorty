@@ -3,25 +3,29 @@ package config
 import (
 	"flag"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 // Config содержит настройки приложения
 type Config struct {
-	RunAddr string
-	BaseURL string
+	RunAddr         string
+	BaseURL         string
+	FileStoragePath string
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
-func NewConfig() *Config {
+func NewConfig() (*Config, error) {
 	cfg := &Config{
-		RunAddr: ":8080",
-		BaseURL: "http://localhost:8080",
+		RunAddr:         ":8080",
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: "internal/storage/storage.json",
 	}
 
 	// Регистрируем флаги
 	flagRunAddr := flag.String("a", ":8080", "address and port to run server")
 	flagBaseURL := flag.String("b", "http://localhost:8080", "base URL for shortened links")
+	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
 	flag.Parse()
 
 	// Проверяем переменные окружения
@@ -37,6 +41,12 @@ func NewConfig() *Config {
 		cfg.BaseURL = *flagBaseURL
 	}
 
+	if path := os.Getenv("FILE_STORAGE_PATH"); path != "" {
+		cfg.FileStoragePath = path
+	} else if *flagFilePath != "" {
+		cfg.FileStoragePath = *flagFilePath
+	}
+
 	// Валидация значений
 	if !strings.Contains(cfg.RunAddr, ":") {
 		cfg.RunAddr = ":" + cfg.RunAddr
@@ -44,6 +54,13 @@ func NewConfig() *Config {
 	if !strings.HasPrefix(cfg.BaseURL, "http://") && !strings.HasPrefix(cfg.BaseURL, "https://") {
 		cfg.BaseURL = "http://" + cfg.BaseURL
 	}
+	if cfg.FileStoragePath != "" {
+		// Создаём директорию для файла, если она не существует
+		dir := filepath.Dir(cfg.FileStoragePath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, err
+		}
+	}
 
-	return cfg
+	return cfg, nil
 }
