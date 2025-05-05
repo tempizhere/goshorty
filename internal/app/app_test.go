@@ -14,8 +14,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"go.uber.org/zap"
 )
 
 // errorReader симулирует ошибку чтения
@@ -40,12 +42,19 @@ func compressData(data []byte) ([]byte, error) {
 
 // Тесты для HandlePostURL и HandleJSONShorten
 func TestHandlePostURL(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
 	// Создаём зависимости
 	cfg := &config.Config{
-		RunAddr: ":8080",
-		BaseURL: "http://localhost:8080",
+		RunAddr:         ":8080",
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: tempFile.Name(),
 	}
-	var repo repository.Repository = repository.NewMemoryRepository()
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc)
 
@@ -397,8 +406,14 @@ func TestHandlePostURL(t *testing.T) {
 
 // Тесты для HandleGetURL
 func TestHandleGetURL(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
 	// Создаём зависимости
-	var repo repository.Repository = repository.NewMemoryRepository()
+	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
 	appInstance := NewApp(svc)
 
@@ -494,8 +509,14 @@ func TestHandleGetURL(t *testing.T) {
 
 // Тесты для HandleJSONExpand
 func TestHandleJSONExpand(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
 	// Создаём зависимости
-	var repo repository.Repository = repository.NewMemoryRepository()
+	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
 	appInstance := NewApp(svc)
 
