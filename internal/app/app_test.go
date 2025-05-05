@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"go.uber.org/zap"
 )
 
 // errorReader симулирует ошибку чтения
@@ -52,7 +53,7 @@ func TestHandlePostURL(t *testing.T) {
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
 	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc)
@@ -411,7 +412,7 @@ func TestHandleGetURL(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 
 	// Создаём зависимости
-	repo, err := repository.NewFileRepository(tempFile.Name())
+	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
 	appInstance := NewApp(svc)
@@ -514,7 +515,7 @@ func TestHandleJSONExpand(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 
 	// Создаём зависимости
-	repo, err := repository.NewFileRepository(tempFile.Name())
+	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
 	appInstance := NewApp(svc)

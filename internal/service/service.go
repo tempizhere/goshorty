@@ -8,10 +8,16 @@ import (
 	"strings"
 )
 
+var (
+	ErrEmptyURL        = errors.New("empty URL")
+	ErrEmptyID         = errors.New("empty ID")
+	ErrIDAlreadyExists = errors.New("ID already exists")
+)
+
 // Service реализует логику работы с короткими URL
 type Service struct {
 	repo    repository.Repository
-	baseURL string // придуманное имя
+	baseURL string
 }
 
 // NewService создаёт новый экземпляр Service
@@ -36,13 +42,13 @@ func (s *Service) GenerateShortID() (string, error) {
 // CreateShortURLWithID создаёт короткий URL с заданным ID
 func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
 	if originalURL == "" {
-		return "", errors.New("empty URL")
+		return "", ErrEmptyURL
 	}
 	if id == "" {
-		return "", errors.New("empty ID")
+		return "", ErrEmptyID
 	}
 	if _, exists := s.repo.Get(id); exists {
-		return "", errors.New("ID already exists")
+		return "", ErrIDAlreadyExists
 	}
 	err := s.repo.Save(id, originalURL)
 	if err != nil {
@@ -64,9 +70,10 @@ func (s *Service) CreateShortURL(originalURL string) (string, error) {
 		if err == nil {
 			return shortURL, nil
 		}
-		if !strings.Contains(err.Error(), "ID already exists") {
-			return "", err
+		if errors.Is(err, ErrIDAlreadyExists) {
+			continue
 		}
+		return "", err
 	}
 	return "", errors.New("failed to generate unique ID")
 }

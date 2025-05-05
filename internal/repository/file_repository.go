@@ -3,8 +3,10 @@ package repository
 import (
 	"bufio"
 	"encoding/json"
+	"go.uber.org/zap"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // URLRecord представляет запись в JSON-файле
@@ -18,13 +20,16 @@ type URLRecord struct {
 type FileRepository struct {
 	store    map[string]string
 	filePath string
+	logger   *zap.Logger
+	mutex    sync.RWMutex
 }
 
 // NewFileRepository создаёт новый экземпляр FileRepository
-func NewFileRepository(filePath string) (*FileRepository, error) {
+func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, error) {
 	repo := &FileRepository{
 		store:    make(map[string]string),
 		filePath: filePath,
+		logger:   logger,
 	}
 
 	// Создаём директорию, если не существует
@@ -54,10 +59,13 @@ func NewFileRepository(filePath string) (*FileRepository, error) {
 	for scanner.Scan() {
 		var record URLRecord
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			// Пропускаем некорректные строки
+			// Пропускаем некорректные строки и логируем это
+			repo.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(err))
 			continue
 		}
+		repo.mutex.Lock()
 		repo.store[record.ShortURL] = record.OriginalURL
+		repo.mutex.Unlock()
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -68,6 +76,9 @@ func NewFileRepository(filePath string) (*FileRepository, error) {
 
 // Save сохраняет пару ID-URL в хранилище и файл
 func (r *FileRepository) Save(id, url string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	r.store[id] = url
 
 	// Создаём запись для файла
@@ -105,12 +116,18 @@ func (r *FileRepository) Save(id, url string) error {
 
 // Get возвращает URL по ID, если он существует
 func (r *FileRepository) Get(id string) (string, bool) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
 	url, exists := r.store[id]
 	return url, exists
 }
 
 // Clear очищает хранилище и файл
 func (r *FileRepository) Clear() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	r.store = make(map[string]string)
 	// Пересоздаём пустой файл
 	os.Remove(r.filePath)

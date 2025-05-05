@@ -24,7 +24,7 @@ func main() {
 	logger := log.NewLogger()
 
 	// Создаём репозиторий
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize file repository", zap.Error(err))
 	}
@@ -45,7 +45,7 @@ func main() {
 		appInstance.HandlePostURL(w, r)
 	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleGetURL(w, r)
@@ -54,7 +54,7 @@ func main() {
 		appInstance.HandleJSONShorten(w, r)
 	})
 	r.Get("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	})
 	r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleJSONExpand(w, r)

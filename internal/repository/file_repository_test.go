@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"go.uber.org/zap"
 )
 
 func TestFileRepository(t *testing.T) {
@@ -13,7 +14,7 @@ func TestFileRepository(t *testing.T) {
 	tempFile := filepath.Join(tempDir, "storage.json")
 
 	// Создаём репозиторий
-	repo, err := NewFileRepository(tempFile)
+	repo, err := NewFileRepository(tempFile, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 
 	// Тест 1: Сохранение и получение URL
@@ -24,7 +25,7 @@ func TestFileRepository(t *testing.T) {
 	assert.Equal(t, "https://example.com", url, "URL should match")
 
 	// Тест 2: Восстановление данных
-	repo2, err := NewFileRepository(tempFile)
+	repo2, err := NewFileRepository(tempFile, zap.NewNop())
 	assert.NoError(t, err, "Failed to create second file repository")
 	url, exists = repo2.Get("testID")
 	assert.True(t, exists, "URL should be restored")
@@ -40,7 +41,7 @@ func TestFileRepository(t *testing.T) {
 	// Тест 4: Обработка некорректного JSON
 	err = os.WriteFile(tempFile, []byte("invalid json\n"), 0644)
 	assert.NoError(t, err, "Failed to write invalid JSON")
-	repo3, err := NewFileRepository(tempFile)
+	repo3, err := NewFileRepository(tempFile, zap.NewNop())
 	assert.NoError(t, err, "Should handle invalid JSON lines")
 	_, exists = repo3.Get("testID")
 	assert.False(t, exists, "No URLs should be loaded from invalid JSON")
@@ -52,7 +53,7 @@ func TestFileRepository_NonExistentDir(t *testing.T) {
 	tempFile := filepath.Join(tempDir, "subdir/storage.json")
 
 	// Создаём репозиторий
-	repo, err := NewFileRepository(tempFile)
+	repo, err := NewFileRepository(tempFile, zap.NewNop())
 	assert.NoError(t, err, "Failed to create repository in non-existent dir")
 
 	// Тест 5: Сохранение URL
@@ -70,7 +71,7 @@ func TestFileRepository_FilePermissionError(t *testing.T) {
 	assert.NoError(t, err, "Failed to create read-only file")
 
 	// Создаём репозиторий
-	repo, err := NewFileRepository(tempFile)
+	repo, err := NewFileRepository(tempFile, zap.NewNop())
 	assert.NoError(t, err, "Should create repository despite read-only file")
 
 	// Тест 6: Попытка сохранения (должна пройти, так как файл пересоздаётся)

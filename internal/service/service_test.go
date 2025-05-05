@@ -52,7 +52,7 @@ func TestService(t *testing.T) {
 	err = repo.Save("id1", "https://example.com")
 	assert.NoError(t, err, "Save should not return error")
 	_, err = svc.CreateShortURLWithID("https://another.com", "id1")
-	assert.EqualError(t, err, "ID already exists", "CreateShortURLWithID should return ID already exists error")
+	assert.ErrorIs(t, err, ErrIDAlreadyExists, "CreateShortURLWithID should return ID already exists error")
 
 	// Тест GetOriginalURL
 	url, exists := svc.GetOriginalURL(id)
