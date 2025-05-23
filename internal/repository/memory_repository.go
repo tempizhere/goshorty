@@ -1,8 +1,11 @@
 package repository
 
+import "sync"
+
 // MemoryRepository реализует интерфейс Repository с использованием map
 type MemoryRepository struct {
-	store map[string]string
+    store map[string]string
+    mutex sync.RWMutex
 }
 
 // NewMemoryRepository создаёт новый экземпляр MemoryRepository
@@ -31,8 +34,10 @@ func (r *MemoryRepository) Clear() {
 
 // BatchSave сохраняет множество пар ID-URL в хранилище
 func (r *MemoryRepository) BatchSave(urls map[string]string) error {
-	for id, url := range urls {
-		r.store[id] = url
-	}
-	return nil
+    r.mutex.Lock()
+    defer r.mutex.Unlock()
+    for id, url := range urls {
+        r.store[id] = url
+    }
+    return nil
 }
