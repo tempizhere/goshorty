@@ -590,15 +590,15 @@ func TestHandlePing(t *testing.T) {
 	tests := []struct {
 		name           string
 		method         string
-		dbSetup        func(*gomock.Controller) Database
+		dbSetup        func(*gomock.Controller) repository.Database
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name:   "successful ping",
 			method: http.MethodGet,
-			dbSetup: func(ctrl *gomock.Controller) Database {
-				mockDB := NewMockDatabase(ctrl)
+			dbSetup: func(ctrl *gomock.Controller) repository.Database {
+				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(nil)
 				return mockDB
 			},
@@ -608,8 +608,8 @@ func TestHandlePing(t *testing.T) {
 		{
 			name:   "database connection failed",
 			method: http.MethodGet,
-			dbSetup: func(ctrl *gomock.Controller) Database {
-				mockDB := NewMockDatabase(ctrl)
+			dbSetup: func(ctrl *gomock.Controller) repository.Database {
+				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(errors.New("connection failed"))
 				return mockDB
 			},
@@ -619,7 +619,7 @@ func TestHandlePing(t *testing.T) {
 		{
 			name:   "no database configured",
 			method: http.MethodGet,
-			dbSetup: func(ctrl *gomock.Controller) Database {
+			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				return nil
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -628,7 +628,7 @@ func TestHandlePing(t *testing.T) {
 		{
 			name:   "wrong method",
 			method: http.MethodPost,
-			dbSetup: func(ctrl *gomock.Controller) Database {
+			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				return nil
 			},
 			expectedStatus: http.StatusMethodNotAllowed,

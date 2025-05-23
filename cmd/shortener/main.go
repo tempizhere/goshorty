@@ -38,9 +38,22 @@ func main() {
 	}()
 
 	// Создаём репозиторий
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, logger)
-	if err != nil {
-		logger.Fatal("Failed to initialize file repository", zap.Error(err))
+	var repo repository.Repository
+	if cfg.DatabaseDSN != "" && db != nil {
+		repo, err = repository.NewPostgresRepository(db, logger)
+		if err != nil {
+			logger.Fatal("Failed to initialize PostgreSQL repository", zap.Error(err))
+		}
+		logger.Info("Using PostgreSQL repository")
+	} else if cfg.FileStoragePath != "" {
+		repo, err = repository.NewFileRepository(cfg.FileStoragePath, logger)
+		if err != nil {
+			logger.Fatal("Failed to initialize file repository", zap.Error(err))
+		}
+		logger.Info("Using file repository", zap.String("path", cfg.FileStoragePath))
+	} else {
+		repo = repository.NewMemoryRepository()
+		logger.Info("Using memory repository")
 	}
 
 	// Создаём зависимости

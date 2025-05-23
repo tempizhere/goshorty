@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
 )
 
@@ -25,11 +26,11 @@ type ExpandResponse struct {
 // App содержит хендлеры и зависимости
 type App struct {
 	svc *service.Service
-	db  Database
+	db  repository.Database // Изменяем на repository.Database
 }
 
 // NewApp создаёт новый экземпляр App
-func NewApp(svc *service.Service, db Database) *App {
+func NewApp(svc *service.Service, db repository.Database) *App {
 	return &App{svc: svc, db: db}
 }
 
