@@ -418,7 +418,6 @@ func TestHandleGetURL(t *testing.T) {
 
 	// Создаём зависимости
 	cfg := &config.Config{
-		RunAddr:         ":8080",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
 	}
@@ -526,7 +525,6 @@ func TestHandleJSONExpand(t *testing.T) {
 
 	// Создаём зависимости
 	cfg := &config.Config{
-		RunAddr:         ":8080",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
 	}
