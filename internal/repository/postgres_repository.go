@@ -54,3 +54,25 @@ func (r *PostgresRepository) Clear() {
 		r.logger.Error("Failed to clear database", zap.Error(err))
 	}
 }
+
+// BatchSave сохраняет множество пар ID-URL в базе данных
+func (r *PostgresRepository) BatchSave(urls map[string]string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		r.logger.Error("Failed to start transaction", zap.Error(err))
+		return err
+	}
+	for id, url := range urls {
+		_, err := tx.Exec("INSERT INTO urls (short_id, original_url) VALUES ($1, $2)", id, url)
+		if err != nil {
+			r.logger.Error("Failed to save URL in transaction", zap.String("short_id", id), zap.String("url", url), zap.Error(err))
+			tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		r.logger.Error("Failed to commit transaction", zap.Error(err))
+		return err
+	}
+	return nil
+}

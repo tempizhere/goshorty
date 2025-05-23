@@ -137,3 +137,36 @@ func (r *FileRepository) Clear() {
 		newFile.Close()
 	}
 }
+
+// BatchSave сохраняет множество пар ID-URL в хранилище и файл
+func (r *FileRepository) BatchSave(urls map[string]string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for id, url := range urls {
+		r.store[id] = url
+	}
+
+	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for id, url := range urls {
+		record := URLRecord{
+			UUID:        id,
+			ShortURL:    id,
+			OriginalURL: url,
+		}
+		data, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if _, err := file.Write(data); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
 )
@@ -165,6 +167,43 @@ func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// Обработчик POST-запросов на "/api/shorten/batch"
+func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+	var reqBody []models.BatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(reqBody) == 0 {
+		http.Error(w, "Empty batch", http.StatusBadRequest)
+		return
+	}
+	for _, req := range reqBody {
+		if req.CorrelationID == "" {
+			http.Error(w, "Missing correlation_id", http.StatusBadRequest)
+			return
+		}
+		if _, err := url.ParseRequestURI(req.OriginalURL); err != nil {
+			http.Error(w, "Invalid URL", http.StatusBadRequest)
+			return
+		}
+	}
+	respBody, err := a.svc.BatchShorten(reqBody)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.writeJSONResponse(w, http.StatusCreated, respBody)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок

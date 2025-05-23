@@ -71,3 +71,11 @@ func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
 func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return db.conn.QueryRow(query, args...)
 }
+
+// Begin начинает транзакцию
+func (db *DB) Begin() (*sql.Tx, error) {
+	if db == nil || db.conn == nil {
+		return nil, sql.ErrConnDone
+	}
+	return db.conn.Begin()
+}

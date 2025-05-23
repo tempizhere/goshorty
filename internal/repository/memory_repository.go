@@ -28,3 +28,11 @@ func (r *MemoryRepository) Get(id string) (string, bool) {
 func (r *MemoryRepository) Clear() {
 	r.store = make(map[string]string)
 }
+
+// BatchSave сохраняет множество пар ID-URL в хранилище
+func (r *MemoryRepository) BatchSave(urls map[string]string) error {
+	for id, url := range urls {
+		r.store[id] = url
+	}
+	return nil
+}
