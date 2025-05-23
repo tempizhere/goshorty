@@ -72,157 +72,172 @@ func TestHandlePostURL(t *testing.T) {
 		useGzipRequest  bool
 		useGzipResponse bool
 		largeResponse   bool
+		storeSetup      func()
 		expectedCode    int
 		expectedBody    string
 		expectedStored  bool
 		expectGzip      bool
 	}{
 		{
-			name:            "Success",
-			method:          http.MethodPost,
-			url:             "/",
-			contentType:     "text/plain",
-			body:            strings.NewReader("https://example.com"),
-			isJSON:          false,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusCreated,
-			expectedStored:  true,
-			expectGzip:      false,
+			name:           "Success",
+			method:         http.MethodPost,
+			url:            "/",
+			contentType:    "text/plain",
+			body:           strings.NewReader("https://example.com"),
+			isJSON:         false,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusCreated,
+			expectedStored: true,
+			expectGzip:     false,
 		},
 		{
-			name:            "InvalidMethod",
-			method:          http.MethodGet,
-			url:             "/",
-			contentType:     "text/plain",
-			body:            nil,
-			isJSON:          false,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "Method not allowed\n",
-			expectedStored:  false,
-			expectGzip:      false,
+			name:        "Duplicate URL",
+			method:      http.MethodPost,
+			url:         "/",
+			contentType: "text/plain",
+			body:        strings.NewReader("https://example.com"),
+			isJSON:      false,
+			storeSetup: func() {
+				_, err := repo.Save("testID", "https://example.com")
+				assert.NoError(t, err, "Failed to save URL in storeSetup")
+			},
+			expectedCode:   http.StatusConflict,
+			expectedStored: true,
+			expectedBody:   "http://localhost:8080/testID",
+			expectGzip:     false,
 		},
 		{
-			name:            "InvalidContentType",
-			method:          http.MethodPost,
-			url:             "/",
-			contentType:     "application/json",
-			body:            strings.NewReader("https://example.com"),
-			isJSON:          false,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusCreated,
-			expectedStored:  true,
-			expectGzip:      false,
+			name:           "InvalidMethod",
+			method:         http.MethodGet,
+			url:            "/",
+			contentType:    "text/plain",
+			body:           nil,
+			isJSON:         false,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusBadRequest,
+			expectedBody:   "Method not allowed\n",
+			expectedStored: false,
+			expectGzip:     false,
 		},
 		{
-			name:            "EmptyBody",
-			method:          http.MethodPost,
-			url:             "/",
-			contentType:     "text/plain",
-			body:            strings.NewReader(""),
-			isJSON:          false,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "empty URL\n",
-			expectedStored:  false,
-			expectGzip:      false,
+			name:           "InvalidContentType",
+			method:         http.MethodPost,
+			url:            "/",
+			contentType:    "application/json",
+			body:           strings.NewReader("https://example.com"),
+			isJSON:         false,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusCreated,
+			expectedStored: true,
+			expectGzip:     false,
 		},
 		{
-			name:            "ReadBodyError",
-			method:          http.MethodPost,
-			url:             "/",
-			contentType:     "text/plain",
-			body:            strings.NewReader("https://example.com"),
-			isJSON:          false,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "Failed to read request body\n",
-			expectedStored:  false,
-			expectGzip:      false,
+			name:           "EmptyBody",
+			method:         http.MethodPost,
+			url:            "/",
+			contentType:    "text/plain",
+			body:           strings.NewReader(""),
+			isJSON:         false,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusBadRequest,
+			expectedBody:   "empty URL\n",
+			expectedStored: false,
+			expectGzip:     false,
 		},
 		{
-			name:            "JSONSuccess",
-			method:          http.MethodPost,
-			url:             "/api/shorten",
-			contentType:     "application/json",
-			body:            strings.NewReader(`{"url":"https://example.com"}`),
-			isJSON:          true,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusCreated,
-			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
-			expectedStored:  true,
-			expectGzip:      false,
+			name:           "ReadBodyError",
+			method:         http.MethodPost,
+			url:            "/",
+			contentType:    "text/plain",
+			body:           strings.NewReader("https://example.com"),
+			isJSON:         false,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusBadRequest,
+			expectedBody:   "Failed to read request body\n",
+			expectedStored: false,
+			expectGzip:     false,
 		},
 		{
-			name:            "JSONInvalid",
-			method:          http.MethodPost,
-			url:             "/api/shorten",
-			contentType:     "application/json",
-			body:            strings.NewReader(`{invalid json}`),
-			isJSON:          true,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "Invalid JSON\n",
-			expectedStored:  false,
-			expectGzip:      false,
+			name:           "JSONSuccess",
+			method:         http.MethodPost,
+			url:            "/api/shorten",
+			contentType:    "application/json",
+			body:           strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:         true,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusCreated,
+			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
+			expectedStored: true,
+			expectGzip:     false,
 		},
 		{
-			name:            "JSONEmptyURL",
-			method:          http.MethodPost,
-			url:             "/api/shorten",
-			contentType:     "application/json",
-			body:            strings.NewReader(`{"url":""}`),
-			isJSON:          true,
-			useGzipRequest:  false,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "empty URL\n",
-			expectedStored:  false,
-			expectGzip:      false,
+			name:        "JSONDuplicateURL",
+			method:      http.MethodPost,
+			url:         "/api/shorten",
+			contentType: "application/json",
+			body:        strings.NewReader(`{"url":"https://example.com"}`),
+			isJSON:      true,
+			storeSetup: func() {
+				_, err := repo.Save("testID", "https://example.com")
+				assert.NoError(t, err, "Failed to save URL in storeSetup")
+			},
+			expectedCode:   http.StatusConflict,
+			expectedBody:   `{"result":"http://localhost:8080/testID"}`,
+			expectedStored: true,
+			expectGzip:     false,
 		},
 		{
-			name:            "GzipRequestJSONSuccess",
-			method:          http.MethodPost,
-			url:             "/api/shorten",
-			contentType:     "application/json",
-			body:            nil, // Будет установлено в тесте
-			isJSON:          true,
-			useGzipRequest:  true,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusCreated,
-			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
-			expectedStored:  true,
-			expectGzip:      false,
+			name:           "JSONInvalid",
+			method:         http.MethodPost,
+			url:            "/api/shorten",
+			contentType:    "application/json",
+			body:           strings.NewReader(`{invalid json}`),
+			isJSON:         true,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusBadRequest,
+			expectedBody:   "Invalid JSON\n",
+			expectedStored: false,
+			expectGzip:     false,
 		},
 		{
-			name:            "GzipRequestTextSuccess",
-			method:          http.MethodPost,
-			url:             "/",
-			contentType:     "application/x-gzip",
-			body:            nil, // Будет установлено в тесте
-			isJSON:          false,
-			useGzipRequest:  true,
-			useGzipResponse: false,
-			largeResponse:   false,
-			expectedCode:    http.StatusCreated,
-			expectedStored:  true,
-			expectGzip:      false,
+			name:           "JSONEmptyURL",
+			method:         http.MethodPost,
+			url:            "/api/shorten",
+			contentType:    "application/json",
+			body:           strings.NewReader(`{"url":""}`),
+			isJSON:         true,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusBadRequest,
+			expectedBody:   "empty URL\n",
+			expectedStored: false,
+			expectGzip:     false,
+		},
+		{
+			name:           "GzipRequestJSONSuccess",
+			method:         http.MethodPost,
+			url:            "/api/shorten",
+			contentType:    "application/json",
+			body:           nil, // Будет установлено в тесте
+			isJSON:         true,
+			useGzipRequest: true,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusCreated,
+			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
+			expectedStored: true,
+			expectGzip:     false,
+		},
+		{
+			name:           "GzipRequestTextSuccess",
+			method:         http.MethodPost,
+			url:            "/",
+			contentType:    "application/x-gzip",
+			body:           nil, // Будет установлено в тесте
+			isJSON:         false,
+			useGzipRequest: true,
+			storeSetup:     func() {},
+			expectedCode:   http.StatusCreated,
+			expectedStored: true,
+			expectGzip:     false,
 		},
 		{
 			name:            "GzipResponseJSONSuccessLarge",
@@ -231,9 +246,9 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "application/json",
 			body:            strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:          true,
-			useGzipRequest:  false,
 			useGzipResponse: true,
 			largeResponse:   true,
+			storeSetup:      func() {},
 			expectedCode:    http.StatusCreated,
 			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
 			expectedStored:  true,
@@ -246,9 +261,9 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "application/json",
 			body:            strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:          true,
-			useGzipRequest:  false,
 			useGzipResponse: true,
 			largeResponse:   false,
+			storeSetup:      func() {},
 			expectedCode:    http.StatusCreated,
 			expectedBody:    `{"result":"` + cfg.BaseURL + "/",
 			expectedStored:  true,
@@ -261,9 +276,9 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "text/plain",
 			body:            strings.NewReader("https://example.com"),
 			isJSON:          false,
-			useGzipRequest:  false,
 			useGzipResponse: true,
 			largeResponse:   true,
+			storeSetup:      func() {},
 			expectedCode:    http.StatusCreated,
 			expectedStored:  true,
 			expectGzip:      false,
@@ -274,6 +289,7 @@ func TestHandlePostURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Очищаем хранилище
 			repo.Clear()
+			tt.storeSetup()
 
 			// Подготавливаем сжатое тело для GzipRequest
 			var requestBody = tt.body
@@ -325,6 +341,22 @@ func TestHandlePostURL(t *testing.T) {
 						}
 						shortURL, err := appInstance.createShortURL(reqBody.URL)
 						if err != nil {
+							if errors.Is(err, repository.ErrURLExists) {
+								respBody := ShortenResponse{
+									Result: shortURL,
+								}
+								w.Header().Set("Content-Type", "application/json")
+								w.WriteHeader(http.StatusConflict)
+								data, err := json.Marshal(respBody)
+								if err != nil {
+									http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+									return
+								}
+								if _, err := w.Write(data); err != nil {
+									http.Error(w, "Failed to write response", http.StatusInternalServerError)
+								}
+								return
+							}
 							http.Error(w, err.Error(), http.StatusBadRequest)
 							return
 						}
@@ -344,7 +376,6 @@ func TestHandlePostURL(t *testing.T) {
 						}
 						if _, err := w.Write(data); err != nil {
 							http.Error(w, "Failed to write response", http.StatusInternalServerError)
-							return
 						}
 						return
 					}
@@ -403,7 +434,9 @@ func TestHandlePostURL(t *testing.T) {
 				}
 				_, exists := repo.Get(id)
 				assert.True(t, exists, "Expected URL to be stored")
-				assert.Contains(t, responseString, cfg.BaseURL, "Expected short URL to contain BaseURL")
+				if tt.expectedCode != http.StatusConflict {
+					assert.Contains(t, responseString, cfg.BaseURL, "Expected short URL to contain BaseURL")
+				}
 			}
 		})
 	}
@@ -441,7 +474,7 @@ func TestHandleGetURL(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/testID",
 			storeSetup: func() {
-				err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusTemporaryRedirect,
@@ -546,7 +579,7 @@ func TestHandleJSONExpand(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/api/expand/testID",
 			storeSetup: func() {
-				err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusOK,
@@ -702,6 +735,7 @@ func TestHandleBatchShorten(t *testing.T) {
 		body         io.Reader
 		contentType  string
 		useGzip      bool
+		storeSetup   func()
 		expectedCode int
 		expectedBody string
 		verifyStore  bool
@@ -712,6 +746,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"},{"correlation_id":"2","original_url":"https://test.com"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusCreated,
 			verifyStore:  true,
 		},
@@ -721,6 +756,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         nil,
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusMethodNotAllowed,
 			expectedBody: "",
 			verifyStore:  false,
@@ -731,6 +767,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"}]`),
 			contentType:  "text/plain",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Content-Type must be application/json\n",
 			verifyStore:  false,
@@ -741,6 +778,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`{invalid json}`),
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Invalid JSON\n",
 			verifyStore:  false,
@@ -751,6 +789,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Empty batch\n",
 			verifyStore:  false,
@@ -761,6 +800,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"","original_url":"https://example.com"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Missing correlation_id\n",
 			verifyStore:  false,
@@ -771,6 +811,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"invalid-url"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Invalid URL\n",
 			verifyStore:  false,
@@ -781,6 +822,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         nil, // Будет установлено в тесте
 			contentType:  "application/json",
 			useGzip:      true,
+			storeSetup:   func() {},
 			expectedCode: http.StatusCreated,
 			verifyStore:  true,
 		},
@@ -790,6 +832,7 @@ func TestHandleBatchShorten(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Очищаем хранилище
 			repo.Clear()
+			tt.storeSetup()
 
 			// Подготавливаем тело запроса
 			var requestBody = tt.body

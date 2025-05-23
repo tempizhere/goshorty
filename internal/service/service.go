@@ -52,11 +52,14 @@ func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
 	if _, exists := s.repo.Get(id); exists {
 		return "", ErrIDAlreadyExists
 	}
-	err := s.repo.Save(id, originalURL)
+	shortID, err := s.repo.Save(id, originalURL)
 	if err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			return strings.TrimRight(s.baseURL, "/") + "/" + shortID, repository.ErrURLExists
+		}
 		return "", err
 	}
-	return strings.TrimRight(s.baseURL, "/") + "/" + id, nil
+	return strings.TrimRight(s.baseURL, "/") + "/" + shortID, nil
 }
 
 // CreateShortURL создаёт короткий URL
@@ -71,6 +74,9 @@ func (s *Service) CreateShortURL(originalURL string) (string, error) {
 		shortURL, err := s.CreateShortURLWithID(originalURL, id)
 		if err == nil {
 			return shortURL, nil
+		}
+		if errors.Is(err, repository.ErrURLExists) {
+			return shortURL, repository.ErrURLExists
 		}
 		if errors.Is(err, ErrIDAlreadyExists) {
 			continue
