@@ -6,6 +6,7 @@ type Repository interface {
 	Save(id, url string) error
 	Get(id string) (string, bool)
 	Clear()
+	BatchSave(urls map[string]string) error
 }
 
 type Database interface {
@@ -13,4 +14,5 @@ type Database interface {
 	Close() error
 	Exec(query string, args ...interface{}) (sql.Result, error)
 	QueryRow(query string, args ...interface{}) *sql.Row
+	Begin() (*sql.Tx, error)
 }

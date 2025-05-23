@@ -89,6 +89,9 @@ func main() {
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandlePing(w, r)
 	})
+	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
+		appInstance.HandleBatchShorten(w, r)
+	})
 
 	err = http.ListenAndServe(cfg.RunAddr, r)
 	if err != nil {

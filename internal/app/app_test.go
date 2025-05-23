@@ -13,12 +13,13 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/tempizhere/goshorty/internal/config"
 	"github.com/tempizhere/goshorty/internal/middleware"
+	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
-	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
 
@@ -416,9 +417,13 @@ func TestHandleGetURL(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 
 	// Создаём зависимости
-	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
+	cfg := &config.Config{
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: tempFile.Name(),
+	}
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, "http://localhost:8080")
+	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc, nil)
 
 	// Таблица тестов
@@ -519,9 +524,13 @@ func TestHandleJSONExpand(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 
 	// Создаём зависимости
-	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
+	cfg := &config.Config{
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: tempFile.Name(),
+	}
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, "http://localhost:8080")
+	svc := service.NewService(repo, cfg.BaseURL)
 	appInstance := NewApp(svc, nil)
 
 	tests := []struct {
@@ -600,6 +609,7 @@ func TestHandlePing(t *testing.T) {
 			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(nil)
+				mockDB.EXPECT().Begin().Times(0)
 				return mockDB
 			},
 			expectedStatus: http.StatusOK,
@@ -611,6 +621,7 @@ func TestHandlePing(t *testing.T) {
 			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(errors.New("connection failed"))
+				mockDB.EXPECT().Begin().Times(0)
 				return mockDB
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -662,6 +673,166 @@ func TestHandlePing(t *testing.T) {
 			// Проверяем статус и тело ответа
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			assert.Equal(t, tt.expectedBody, w.Body.String())
+		})
+	}
+}
+
+// Тесты для HandleBatchShorten
+func TestHandleBatchShorten(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
+	// Создаём зависимости
+	cfg := &config.Config{
+		RunAddr:         ":8080",
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: tempFile.Name(),
+	}
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
+	svc := service.NewService(repo, cfg.BaseURL)
+	appInstance := NewApp(svc, nil)
+
+	// Таблица тестов
+	tests := []struct {
+		name         string
+		method       string
+		body         io.Reader
+		contentType  string
+		useGzip      bool
+		expectedCode int
+		expectedBody string
+		verifyStore  bool
+	}{
+		{
+			name:         "Success",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"},{"correlation_id":"2","original_url":"https://test.com"}]`),
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusCreated,
+			verifyStore:  true,
+		},
+		{
+			name:         "InvalidMethod",
+			method:       http.MethodGet,
+			body:         nil,
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusMethodNotAllowed,
+			expectedBody: "",
+			verifyStore:  false,
+		},
+		{
+			name:         "InvalidContentType",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"}]`),
+			contentType:  "text/plain",
+			useGzip:      false,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Content-Type must be application/json\n",
+			verifyStore:  false,
+		},
+		{
+			name:         "InvalidJSON",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`{invalid json}`),
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Invalid JSON\n",
+			verifyStore:  false,
+		},
+		{
+			name:         "EmptyBatch",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[]`),
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Empty batch\n",
+			verifyStore:  false,
+		},
+		{
+			name:         "MissingCorrelationID",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[{"correlation_id":"","original_url":"https://example.com"}]`),
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Missing correlation_id\n",
+			verifyStore:  false,
+		},
+		{
+			name:         "InvalidURL",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"invalid-url"}]`),
+			contentType:  "application/json",
+			useGzip:      false,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Invalid URL\n",
+			verifyStore:  false,
+		},
+		{
+			name:         "GzipRequestSuccess",
+			method:       http.MethodPost,
+			body:         nil, // Будет установлено в тесте
+			contentType:  "application/json",
+			useGzip:      true,
+			expectedCode: http.StatusCreated,
+			verifyStore:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Очищаем хранилище
+			repo.Clear()
+
+			// Подготавливаем тело запроса
+			var requestBody = tt.body
+			if tt.useGzip {
+				data := `[{"correlation_id":"1","original_url":"https://example.com"},{"correlation_id":"2","original_url":"https://test.com"}]`
+				compressed, err := compressData([]byte(data))
+				assert.NoError(t, err, "Failed to compress request body")
+				requestBody = bytes.NewReader(compressed)
+			}
+
+			// Создаём запрос
+			req := httptest.NewRequest(tt.method, "/api/shorten/batch", requestBody)
+			req.Header.Set("Content-Type", tt.contentType)
+			if tt.useGzip {
+				req.Header.Set("Content-Encoding", "gzip")
+			}
+			rr := httptest.NewRecorder()
+
+			// Настраиваем маршрутизатор
+			r := chi.NewRouter()
+			r.Use(middleware.GzipMiddleware)
+			r.Post("/api/shorten/batch", appInstance.HandleBatchShorten)
+
+			// Выполняем запрос
+			r.ServeHTTP(rr, req)
+
+			// Проверяем результаты
+			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
+			if tt.expectedBody != "" {
+				assert.Equal(t, tt.expectedBody, rr.Body.String(), "Response body mismatch")
+			}
+			if tt.verifyStore {
+				var resp []models.BatchResponse
+				err := json.Unmarshal(rr.Body.Bytes(), &resp)
+				assert.NoError(t, err, "Failed to unmarshal JSON response")
+				assert.Len(t, resp, 2, "Expected two responses")
+				for _, r := range resp {
+					id := svc.ExtractIDFromShortURL(r.ShortURL)
+					_, exists := repo.Get(id)
+					assert.True(t, exists, "URL should be stored")
+					assert.Contains(t, r.ShortURL, cfg.BaseURL, "Short URL should contain BaseURL")
+				}
+			}
 		})
 	}
 }
