@@ -5,18 +5,20 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
-	"github.com/tempizhere/goshorty/internal/config"
-	"github.com/tempizhere/goshorty/internal/middleware"
-	"github.com/tempizhere/goshorty/internal/repository"
-	"github.com/tempizhere/goshorty/internal/service"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/tempizhere/goshorty/internal/config"
+	"github.com/tempizhere/goshorty/internal/middleware"
+	"github.com/tempizhere/goshorty/internal/repository"
+	"github.com/tempizhere/goshorty/internal/service"
+	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
 
@@ -56,7 +58,7 @@ func TestHandlePostURL(t *testing.T) {
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := NewApp(svc)
+	appInstance := NewApp(svc, nil)
 
 	// Таблица тестов
 	tests := []struct {
@@ -174,6 +176,7 @@ func TestHandlePostURL(t *testing.T) {
 			largeResponse:   false,
 			expectedCode:    http.StatusBadRequest,
 			expectedBody:    "Invalid JSON\n",
+			expectedStored:  false,
 			expectGzip:      false,
 		},
 		{
@@ -188,6 +191,7 @@ func TestHandlePostURL(t *testing.T) {
 			largeResponse:   false,
 			expectedCode:    http.StatusBadRequest,
 			expectedBody:    "empty URL\n",
+			expectedStored:  false,
 			expectGzip:      false,
 		},
 		{
@@ -415,7 +419,7 @@ func TestHandleGetURL(t *testing.T) {
 	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
-	appInstance := NewApp(svc)
+	appInstance := NewApp(svc, nil)
 
 	// Таблица тестов
 	tests := []struct {
@@ -518,7 +522,7 @@ func TestHandleJSONExpand(t *testing.T) {
 	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
 	svc := service.NewService(repo, "http://localhost:8080")
-	appInstance := NewApp(svc)
+	appInstance := NewApp(svc, nil)
 
 	tests := []struct {
 		name         string
@@ -577,6 +581,87 @@ func TestHandleJSONExpand(t *testing.T) {
 			}
 			assert.Equal(t, tt.expectedCode, resp.StatusCode, "Status code mismatch")
 			assert.Equal(t, tt.expectedBody, string(body), "Body mismatch")
+		})
+	}
+}
+
+// Тесты для HandlePing
+func TestHandlePing(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		dbSetup        func(*gomock.Controller) Database
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:   "successful ping",
+			method: http.MethodGet,
+			dbSetup: func(ctrl *gomock.Controller) Database {
+				mockDB := NewMockDatabase(ctrl)
+				mockDB.EXPECT().Ping().Return(nil)
+				return mockDB
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "",
+		},
+		{
+			name:   "database connection failed",
+			method: http.MethodGet,
+			dbSetup: func(ctrl *gomock.Controller) Database {
+				mockDB := NewMockDatabase(ctrl)
+				mockDB.EXPECT().Ping().Return(errors.New("connection failed"))
+				return mockDB
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "Database connection failed\n",
+		},
+		{
+			name:   "no database configured",
+			method: http.MethodGet,
+			dbSetup: func(ctrl *gomock.Controller) Database {
+				return nil
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "Database not configured\n",
+		},
+		{
+			name:   "wrong method",
+			method: http.MethodPost,
+			dbSetup: func(ctrl *gomock.Controller) Database {
+				return nil
+			},
+			expectedStatus: http.StatusMethodNotAllowed,
+			expectedBody:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Создаём контроллер gomock для каждого подтеста
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// Настраиваем мок или возвращаем nil
+			db := tt.dbSetup(ctrl)
+
+			// Создаём App с зависимостями
+			appInstance := NewApp(nil, db)
+
+			// Настраиваем маршрутизатор
+			r := chi.NewRouter()
+			r.Get("/ping", appInstance.HandlePing)
+
+			// Создаём тестовый запрос
+			req := httptest.NewRequest(tt.method, "/ping", nil)
+			w := httptest.NewRecorder()
+
+			// Выполняем запрос
+			r.ServeHTTP(w, req)
+
+			// Проверяем статус и тело ответа
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			assert.Equal(t, tt.expectedBody, w.Body.String())
 		})
 	}
 }

@@ -3,10 +3,11 @@ package repository
 import (
 	"bufio"
 	"encoding/json"
-	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 // URLRecord представляет запись в JSON-файле

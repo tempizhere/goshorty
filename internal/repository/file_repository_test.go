@@ -2,10 +2,10 @@ package repository
 
 import (
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"testing"
-	"go.uber.org/zap"
 )
 
 func TestFileRepository(t *testing.T) {
