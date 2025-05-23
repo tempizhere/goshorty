@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
 	"github.com/tempizhere/goshorty/internal/config"
@@ -9,7 +11,6 @@ import (
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
 	"go.uber.org/zap"
-	"net/http"
 )
 
 func main() {
@@ -23,6 +24,19 @@ func main() {
 	// Инициализация логгера
 	logger := log.NewLogger()
 
+	// Инициализация базы данных
+	db, err := app.NewDB(cfg.DatabaseDSN)
+	if err != nil {
+		logger.Fatal("Failed to initialize database", zap.Error(err))
+	}
+	defer func() {
+		if db != nil {
+			if err := db.Close(); err != nil {
+				logger.Error("Failed to close database", zap.Error(err))
+			}
+		}
+	}()
+
 	// Создаём репозиторий
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, logger)
 	if err != nil {
@@ -31,7 +45,7 @@ func main() {
 
 	// Создаём зависимости
 	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := app.NewApp(svc)
+	appInstance := app.NewApp(svc, db)
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
@@ -58,6 +72,9 @@ func main() {
 	})
 	r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleJSONExpand(w, r)
+	})
+	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
+		appInstance.HandlePing(w, r)
 	})
 
 	err = http.ListenAndServe(cfg.RunAddr, r)

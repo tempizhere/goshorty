@@ -3,11 +3,12 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"github.com/go-chi/chi/v5"
-	"github.com/tempizhere/goshorty/internal/service"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/service"
 )
 
 // Создаём структуры для JSON
@@ -24,11 +25,12 @@ type ExpandResponse struct {
 // App содержит хендлеры и зависимости
 type App struct {
 	svc *service.Service
+	db  Database
 }
 
 // NewApp создаёт новый экземпляр App
-func NewApp(svc *service.Service) *App {
-	return &App{svc: svc}
+func NewApp(svc *service.Service, db Database) *App {
+	return &App{svc: svc, db: db}
 }
 
 // createShortURL создаёт короткий URL и возвращает его или ошибку
@@ -145,6 +147,23 @@ func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 		URL: originalURL,
 	}
 	a.writeJSONResponse(w, http.StatusOK, respBody)
+}
+
+// Обработчик GET-запросов на "/ping"
+func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if a.db == nil {
+		http.Error(w, "Database not configured", http.StatusInternalServerError)
+		return
+	}
+	if err := a.db.Ping(); err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок
