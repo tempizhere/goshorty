@@ -12,6 +12,7 @@ type Config struct {
 	RunAddr         string
 	BaseURL         string
 	FileStoragePath string
+	DatabaseDSN     string
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
@@ -20,12 +21,14 @@ func NewConfig() (*Config, error) {
 		RunAddr:         ":8080",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: "internal/storage/storage.json",
+		DatabaseDSN:     "",
 	}
 
 	// Регистрируем флаги
 	flagRunAddr := flag.String("a", ":8080", "address and port to run server")
 	flagBaseURL := flag.String("b", "http://localhost:8080", "base URL for shortened links")
 	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
+	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
 	flag.Parse()
 
 	// Проверяем переменные окружения
@@ -45,6 +48,12 @@ func NewConfig() (*Config, error) {
 		cfg.FileStoragePath = path
 	} else if *flagFilePath != "" {
 		cfg.FileStoragePath = *flagFilePath
+	}
+
+	if dsn := os.Getenv("DATABASE_DSN"); dsn != "" {
+		cfg.DatabaseDSN = dsn
+	} else if *flagDatabaseDSN != "" {
+		cfg.DatabaseDSN = *flagDatabaseDSN
 	}
 
 	// Валидация значений
