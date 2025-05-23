@@ -76,9 +76,17 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 }
 
 // Save сохраняет пару ID-URL в хранилище и файл
-func (r *FileRepository) Save(id, url string) error {
+func (r *FileRepository) Save(id, url string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+
+	// Проверяем, существует ли original_url
+	for shortID, originalURL := range r.store {
+		if originalURL == url {
+			r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
+			return shortID, ErrURLExists
+		}
+	}
 
 	r.store[id] = url
 
@@ -90,7 +98,7 @@ func (r *FileRepository) Save(id, url string) error {
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
-		return err
+		return "", err
 	}
 	data = append(data, '\n')
 
@@ -99,7 +107,7 @@ func (r *FileRepository) Save(id, url string) error {
 		if err := os.Chmod(r.filePath, 0644); err != nil {
 			// Если не удалось изменить права, попробуем удалить и пересоздать файл
 			if err := os.Remove(r.filePath); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
@@ -107,12 +115,14 @@ func (r *FileRepository) Save(id, url string) error {
 	// Дописываем в файл
 	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer file.Close()
 
-	_, err = file.Write(data)
-	return err
+	if _, err = file.Write(data); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 // Get возвращает URL по ID, если он существует

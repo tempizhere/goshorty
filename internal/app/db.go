@@ -29,17 +29,41 @@ func NewDB(dsn string) (repository.Database, error) {
 	}
 
 	if dsn != "" {
+		// Создаём таблицу
 		_, err := conn.Exec(`
             CREATE TABLE IF NOT EXISTS urls (
                 id SERIAL PRIMARY KEY,
                 short_id VARCHAR(10) UNIQUE NOT NULL,
-                original_url TEXT NOT NULL,
+                original_url TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `)
 		if err != nil {
 			conn.Close()
 			return nil, err
+		}
+
+		// Проверяем наличие уникального индекса на original_url
+		var indexExists bool
+		err = conn.QueryRow(`
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                AND tablename = 'urls'
+                AND indexname = 'urls_original_url_key'
+            )
+        `).Scan(&indexExists)
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		if !indexExists {
+			_, err = conn.Exec("CREATE UNIQUE INDEX urls_original_url_key ON urls (original_url)")
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
 		}
 	}
 
