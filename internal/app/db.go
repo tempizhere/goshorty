@@ -72,9 +72,6 @@ func NewDB(dsn string) (repository.Database, error) {
 
 // Ping проверяет соединение с базой данных
 func (db *DB) Ping() error {
-	if db == nil || db.conn == nil {
-		return nil
-	}
 	return db.conn.Ping()
 }
 

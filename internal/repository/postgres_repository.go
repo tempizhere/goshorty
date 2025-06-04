@@ -106,11 +106,28 @@ func (r *PostgresRepository) BatchSave(urls map[string]string) error {
 		return err
 	}
 	for id, url := range urls {
-		_, err := tx.Exec("INSERT INTO urls (short_id, original_url) VALUES ($1, $2)", id, url)
+		var shortID string
+		err := tx.QueryRow(`
+			INSERT INTO urls (short_id, original_url)
+			VALUES ($1, $2)
+			ON CONFLICT (original_url)
+			DO UPDATE SET short_id = urls.short_id
+			RETURNING short_id
+		`, id, url).Scan(&shortID)
 		if err != nil {
-			r.logger.Error("Failed to save URL in transaction", zap.String("short_id", id), zap.String("url", url), zap.Error(err))
+			r.logger.Error("Failed to save URL in transaction",
+				zap.String("short_id", id),
+				zap.String("original_url", url),
+				zap.Error(err))
 			tx.Rollback()
 			return err
+		}
+		if shortID != id {
+			r.logger.Info("URL already exists in transaction",
+				zap.String("original_url", url),
+				zap.String("existing_short_id", shortID))
+			tx.Rollback()
+			return ErrURLExists
 		}
 	}
 	if err := tx.Commit(); err != nil {

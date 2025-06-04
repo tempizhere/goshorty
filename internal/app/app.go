@@ -215,6 +215,10 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	respBody, err := a.svc.BatchShorten(reqBody)
 	if err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			a.writeJSONResponse(w, http.StatusConflict, respBody)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

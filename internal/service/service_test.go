@@ -108,7 +108,7 @@ func TestBatchShorten(t *testing.T) {
 		{
 			name:    "empty batch",
 			reqs:    []models.BatchRequest{},
-			wantErr: "empty batch",
+			wantErr: ErrEmptyBatch.Error(),
 			wantLen: 0,
 		},
 		{
@@ -117,7 +117,7 @@ func TestBatchShorten(t *testing.T) {
 				{CorrelationID: "1", OriginalURL: "https://example.com"},
 				{CorrelationID: "1", OriginalURL: "https://example.org"},
 			},
-			wantErr: "duplicate correlation_id",
+			wantErr: ErrDuplicateCorrID.Error(),
 			wantLen: 0,
 		},
 		{
@@ -125,7 +125,7 @@ func TestBatchShorten(t *testing.T) {
 			reqs: []models.BatchRequest{
 				{CorrelationID: "1", OriginalURL: ""},
 			},
-			wantErr: "empty URL",
+			wantErr: ErrEmptyURL.Error(),
 			wantLen: 0,
 		},
 		{

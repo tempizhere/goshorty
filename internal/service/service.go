@@ -14,6 +14,9 @@ var (
 	ErrEmptyURL        = errors.New("empty URL")
 	ErrEmptyID         = errors.New("empty ID")
 	ErrIDAlreadyExists = errors.New("ID already exists")
+	ErrEmptyBatch      = errors.New("empty batch")
+	ErrDuplicateCorrID = errors.New("duplicate correlation_id")
+	ErrUniqueIDFailed  = errors.New("failed to generate unique ID")
 )
 
 // Service реализует логику работы с короткими URL
@@ -89,14 +92,14 @@ func (s *Service) CreateShortURL(originalURL string) (string, error) {
 // BatchShorten создаёт короткие URL для списка запросов
 func (s *Service) BatchShorten(reqs []models.BatchRequest) ([]models.BatchResponse, error) {
 	if len(reqs) == 0 {
-		return nil, errors.New("empty batch")
+		return nil, ErrEmptyBatch
 	}
 	urls := make(map[string]string)
 	resp := make([]models.BatchResponse, len(reqs))
 	corrIDs := make(map[string]struct{})
 	for i, req := range reqs {
 		if _, exists := corrIDs[req.CorrelationID]; exists {
-			return nil, errors.New("duplicate correlation_id")
+			return nil, ErrDuplicateCorrID
 		}
 		corrIDs[req.CorrelationID] = struct{}{}
 		if req.OriginalURL == "" {
@@ -104,25 +107,30 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest) ([]models.BatchRespon
 		}
 		var id string
 		var err error
+		var shortURL string
 		for j := 0; j < 5; j++ {
 			id, err = s.GenerateShortID()
 			if err != nil {
 				return nil, err
 			}
 			if _, exists := s.repo.Get(id); !exists {
+				urls[id] = req.OriginalURL
+				shortURL = strings.Join([]string{strings.TrimRight(s.baseURL, "/"), id}, "/")
 				break
 			}
 			if j == 4 {
-				return nil, errors.New("failed to generate unique ID")
+				return nil, ErrUniqueIDFailed
 			}
 		}
-		urls[id] = req.OriginalURL
 		resp[i] = models.BatchResponse{
 			CorrelationID: req.CorrelationID,
-			ShortURL:      strings.TrimRight(s.baseURL, "/") + "/" + id,
+			ShortURL:      shortURL,
 		}
 	}
 	if err := s.repo.BatchSave(urls); err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			return resp, repository.ErrURLExists
+		}
 		return nil, err
 	}
 	return resp, nil
