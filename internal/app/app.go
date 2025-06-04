@@ -3,11 +3,15 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"github.com/go-chi/chi/v5"
-	"github.com/tempizhere/goshorty/internal/service"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/models"
+	"github.com/tempizhere/goshorty/internal/repository"
+	"github.com/tempizhere/goshorty/internal/service"
 )
 
 // Создаём структуры для JSON
@@ -24,11 +28,12 @@ type ExpandResponse struct {
 // App содержит хендлеры и зависимости
 type App struct {
 	svc *service.Service
+	db  repository.Database
 }
 
 // NewApp создаёт новый экземпляр App
-func NewApp(svc *service.Service) *App {
-	return &App{svc: svc}
+func NewApp(svc *service.Service, db repository.Database) *App {
+	return &App{svc: svc, db: db}
 }
 
 // createShortURL создаёт короткий URL и возвращает его или ошибку
@@ -38,7 +43,7 @@ func (a *App) createShortURL(originalURL string) (string, error) {
 	}
 	shortURL, err := a.svc.CreateShortURL(originalURL)
 	if err != nil {
-		return "", err
+		return shortURL, err
 	}
 	return shortURL, nil
 }
@@ -65,6 +70,14 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	}
 	shortURL, err := a.createShortURL(string(body))
 	if err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+			if _, err := w.Write([]byte(shortURL)); err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			}
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -118,6 +131,13 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	shortURL, err := a.createShortURL(reqBody.URL)
 	if err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			respBody := ShortenResponse{
+				Result: shortURL,
+			}
+			a.writeJSONResponse(w, http.StatusConflict, respBody)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -145,6 +165,64 @@ func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 		URL: originalURL,
 	}
 	a.writeJSONResponse(w, http.StatusOK, respBody)
+}
+
+// Обработчик GET-запросов на "/ping"
+func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if a.db == nil {
+		http.Error(w, "Database not configured", http.StatusInternalServerError)
+		return
+	}
+	if err := a.db.Ping(); err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// Обработчик POST-запросов на "/api/shorten/batch"
+func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+	var reqBody []models.BatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(reqBody) == 0 {
+		http.Error(w, "Empty batch", http.StatusBadRequest)
+		return
+	}
+	for _, req := range reqBody {
+		if req.CorrelationID == "" {
+			http.Error(w, "Missing correlation_id", http.StatusBadRequest)
+			return
+		}
+		if _, err := url.ParseRequestURI(req.OriginalURL); err != nil {
+			http.Error(w, "Invalid URL", http.StatusBadRequest)
+			return
+		}
+	}
+	respBody, err := a.svc.BatchShorten(reqBody)
+	if err != nil {
+		if errors.Is(err, repository.ErrURLExists) {
+			a.writeJSONResponse(w, http.StatusConflict, respBody)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.writeJSONResponse(w, http.StatusCreated, respBody)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок
