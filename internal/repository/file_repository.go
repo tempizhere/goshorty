@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/tempizhere/goshorty/internal/models"
 	"go.uber.org/zap"
 )
 
@@ -15,22 +16,25 @@ type URLRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
 }
 
 // FileRepository реализует интерфейс Repository с использованием файла
 type FileRepository struct {
-	store    map[string]string
-	filePath string
-	logger   *zap.Logger
-	mutex    sync.RWMutex
+	store        map[string]string // short_id -> original_url
+	urlToShortID map[string]string // original_url -> short_id
+	filePath     string
+	logger       *zap.Logger
+	mutex        sync.RWMutex
 }
 
 // NewFileRepository создаёт новый экземпляр FileRepository
 func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, error) {
 	repo := &FileRepository{
-		store:    make(map[string]string),
-		filePath: filePath,
-		logger:   logger,
+		store:        make(map[string]string),
+		urlToShortID: make(map[string]string),
+		filePath:     filePath,
+		logger:       logger,
 	}
 
 	// Создаём директорию, если не существует
@@ -66,6 +70,7 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 		}
 		repo.mutex.Lock()
 		repo.store[record.ShortURL] = record.OriginalURL
+		repo.urlToShortID[record.OriginalURL] = record.ShortURL
 		repo.mutex.Unlock()
 	}
 	if err := scanner.Err(); err != nil {
@@ -76,25 +81,25 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 }
 
 // Save сохраняет пару ID-URL в хранилище и файл
-func (r *FileRepository) Save(id, url string) (string, error) {
+func (r *FileRepository) Save(id, url, userID string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	// Проверяем, существует ли original_url
-	for shortID, originalURL := range r.store {
-		if originalURL == url {
-			r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
-			return shortID, ErrURLExists
-		}
+	if shortID, exists := r.urlToShortID[url]; exists {
+		r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
+		return shortID, ErrURLExists
 	}
 
 	r.store[id] = url
+	r.urlToShortID[url] = id
 
 	// Создаём запись для файла
 	record := URLRecord{
 		UUID:        id,
 		ShortURL:    id,
 		OriginalURL: url,
+		UserID:      userID,
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -140,6 +145,7 @@ func (r *FileRepository) Clear() {
 	defer r.mutex.Unlock()
 
 	r.store = make(map[string]string)
+	r.urlToShortID = make(map[string]string)
 	// Пересоздаём пустой файл
 	os.Remove(r.filePath)
 	newFile, err := os.Create(r.filePath)
@@ -149,12 +155,17 @@ func (r *FileRepository) Clear() {
 }
 
 // BatchSave сохраняет множество пар ID-URL в хранилище и файл
-func (r *FileRepository) BatchSave(urls map[string]string) error {
+func (r *FileRepository) BatchSave(urls map[string]string, userID string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	for id, url := range urls {
+		if shortID, exists := r.urlToShortID[url]; exists {
+			r.logger.Info("URL already exists in batch", zap.String("original_url", url), zap.String("short_id", shortID))
+			return ErrURLExists
+		}
 		r.store[id] = url
+		r.urlToShortID[url] = id
 	}
 
 	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -168,6 +179,7 @@ func (r *FileRepository) BatchSave(urls map[string]string) error {
 			UUID:        id,
 			ShortURL:    id,
 			OriginalURL: url,
+			UserID:      userID,
 		}
 		data, err := json.Marshal(record)
 		if err != nil {
@@ -179,4 +191,44 @@ func (r *FileRepository) BatchSave(urls map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// GetURLsByUserID возвращает все URL, созданные пользователем
+func (r *FileRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var urls []models.URL
+
+	file, err := os.Open(r.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return urls, nil // Файл не существует, возвращаем пустой список
+		}
+		r.logger.Error("Failed to open file", zap.Error(err))
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var record URLRecord
+		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(err))
+			continue
+		}
+		if record.UserID == userID {
+			urls = append(urls, models.URL{
+				ShortID:     record.ShortURL,
+				OriginalURL: record.OriginalURL,
+				UserID:      record.UserID,
+			})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		r.logger.Error("Error reading file", zap.Error(err))
+		return nil, err
+	}
+
+	return urls, nil
 }

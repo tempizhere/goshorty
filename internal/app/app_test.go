@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -55,11 +56,12 @@ func TestHandlePostURL(t *testing.T) {
 		RunAddr:         ":8080",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
+		JWTSecret:       "test_secret",
 	}
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := NewApp(svc, nil)
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := NewApp(svc, nil, cfg)
 
 	// Таблица тестов
 	tests := []struct {
@@ -73,6 +75,7 @@ func TestHandlePostURL(t *testing.T) {
 		useGzipResponse bool
 		largeResponse   bool
 		storeSetup      func()
+		userID          string
 		expectedCode    int
 		expectedBody    string
 		expectedStored  bool
@@ -85,6 +88,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "text/plain",
 			body:           strings.NewReader("https://example.com"),
 			isJSON:         false,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusCreated,
 			expectedStored: true,
@@ -97,8 +101,9 @@ func TestHandlePostURL(t *testing.T) {
 			contentType: "text/plain",
 			body:        strings.NewReader("https://example.com"),
 			isJSON:      false,
+			userID:      "test_user",
 			storeSetup: func() {
-				_, err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com", "test_user")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode:   http.StatusConflict,
@@ -113,6 +118,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "text/plain",
 			body:           nil,
 			isJSON:         false,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusBadRequest,
 			expectedBody:   "Method not allowed\n",
@@ -126,6 +132,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "application/json",
 			body:           strings.NewReader("https://example.com"),
 			isJSON:         false,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusCreated,
 			expectedStored: true,
@@ -138,6 +145,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "text/plain",
 			body:           strings.NewReader(""),
 			isJSON:         false,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusBadRequest,
 			expectedBody:   "empty URL\n",
@@ -151,6 +159,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "text/plain",
 			body:           strings.NewReader("https://example.com"),
 			isJSON:         false,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusBadRequest,
 			expectedBody:   "Failed to read request body\n",
@@ -164,6 +173,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "application/json",
 			body:           strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:         true,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusCreated,
 			expectedBody:   `{"result":"` + cfg.BaseURL + "/",
@@ -177,8 +187,9 @@ func TestHandlePostURL(t *testing.T) {
 			contentType: "application/json",
 			body:        strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:      true,
+			userID:      "test_user",
 			storeSetup: func() {
-				_, err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com", "test_user")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode:   http.StatusConflict,
@@ -193,6 +204,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "application/json",
 			body:           strings.NewReader(`{invalid json}`),
 			isJSON:         true,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusBadRequest,
 			expectedBody:   "Invalid JSON\n",
@@ -206,6 +218,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:    "application/json",
 			body:           strings.NewReader(`{"url":""}`),
 			isJSON:         true,
+			userID:         "test_user",
 			storeSetup:     func() {},
 			expectedCode:   http.StatusBadRequest,
 			expectedBody:   "empty URL\n",
@@ -217,8 +230,9 @@ func TestHandlePostURL(t *testing.T) {
 			method:         http.MethodPost,
 			url:            "/api/shorten",
 			contentType:    "application/json",
-			body:           nil, // Будет установлено в тесте
+			body:           nil,
 			isJSON:         true,
+			userID:         "test_user",
 			useGzipRequest: true,
 			storeSetup:     func() {},
 			expectedCode:   http.StatusCreated,
@@ -231,8 +245,9 @@ func TestHandlePostURL(t *testing.T) {
 			method:         http.MethodPost,
 			url:            "/",
 			contentType:    "application/x-gzip",
-			body:           nil, // Будет установлено в тесте
+			body:           nil,
 			isJSON:         false,
+			userID:         "test_user",
 			useGzipRequest: true,
 			storeSetup:     func() {},
 			expectedCode:   http.StatusCreated,
@@ -246,6 +261,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "application/json",
 			body:            strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:          true,
+			userID:          "test_user",
 			useGzipResponse: true,
 			largeResponse:   true,
 			storeSetup:      func() {},
@@ -261,6 +277,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "application/json",
 			body:            strings.NewReader(`{"url":"https://example.com"}`),
 			isJSON:          true,
+			userID:          "test_user",
 			useGzipResponse: true,
 			largeResponse:   false,
 			storeSetup:      func() {},
@@ -276,6 +293,7 @@ func TestHandlePostURL(t *testing.T) {
 			contentType:     "text/plain",
 			body:            strings.NewReader("https://example.com"),
 			isJSON:          false,
+			userID:          "test_user",
 			useGzipResponse: true,
 			largeResponse:   true,
 			storeSetup:      func() {},
@@ -312,6 +330,12 @@ func TestHandlePostURL(t *testing.T) {
 			if tt.useGzipResponse {
 				req.Header.Set("Accept-Encoding", "gzip")
 			}
+			// Добавляем UserID в контекст
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
 			rr := httptest.NewRecorder()
 
 			// Для ReadBodyError подменяем тело запроса
@@ -322,6 +346,7 @@ func TestHandlePostURL(t *testing.T) {
 			// Создаём маршрутизатор с GzipMiddleware
 			r := chi.NewRouter()
 			r.Use(middleware.GzipMiddleware)
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
 			if tt.isJSON {
 				r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
 					if tt.largeResponse {
@@ -339,7 +364,7 @@ func TestHandlePostURL(t *testing.T) {
 							http.Error(w, "Invalid JSON", http.StatusBadRequest)
 							return
 						}
-						shortURL, err := appInstance.createShortURL(reqBody.URL)
+						shortURL, err := appInstance.createShortURL(r, reqBody.URL)
 						if err != nil {
 							if errors.Is(err, repository.ErrURLExists) {
 								respBody := ShortenResponse{
@@ -365,7 +390,7 @@ func TestHandlePostURL(t *testing.T) {
 							Filler string `json:"filler"`
 						}{
 							Result: shortURL,
-							Filler: strings.Repeat("x", 1400), // Наполнитель для размера > 1400 байт
+							Filler: strings.Repeat("x", 1400),
 						}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusCreated)
@@ -453,11 +478,12 @@ func TestHandleGetURL(t *testing.T) {
 	cfg := &config.Config{
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
+		JWTSecret:       "test_secret",
 	}
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := NewApp(svc, nil)
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := NewApp(svc, nil, cfg)
 
 	// Таблица тестов
 	tests := []struct {
@@ -465,6 +491,7 @@ func TestHandleGetURL(t *testing.T) {
 		method       string
 		path         string
 		storeSetup   func()
+		userID       string
 		expectedCode int
 		expectedBody string
 		expectedLoc  string
@@ -473,8 +500,9 @@ func TestHandleGetURL(t *testing.T) {
 			name:   "Success",
 			method: http.MethodGet,
 			path:   "/testID",
+			userID: "test_user",
 			storeSetup: func() {
-				_, err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com", "test_user")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusTemporaryRedirect,
@@ -484,6 +512,7 @@ func TestHandleGetURL(t *testing.T) {
 			name:         "InvalidMethod",
 			method:       http.MethodPost,
 			path:         "/testID",
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusMethodNotAllowed,
 			expectedBody: "",
@@ -492,6 +521,7 @@ func TestHandleGetURL(t *testing.T) {
 			name:         "NotFound",
 			method:       http.MethodGet,
 			path:         "/unknownID",
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "URL not found\n",
@@ -507,6 +537,7 @@ func TestHandleGetURL(t *testing.T) {
 
 			// Создаём маршрутизатор chi
 			r := chi.NewRouter()
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
 			r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 				appInstance.HandleGetURL(w, r)
 			})
@@ -515,11 +546,16 @@ func TestHandleGetURL(t *testing.T) {
 			server := httptest.NewServer(r)
 			defer server.Close()
 
-			// Отправляем запрос
+			// Создаём запрос с UserID в контексте
 			req, err := http.NewRequest(tt.method, strings.TrimSuffix(server.URL, "/")+tt.path, nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
 			client := &http.Client{
 				CheckRedirect: func(req *http.Request, via []*http.Request) error {
 					return http.ErrUseLastResponse // Не следовать редиректам
@@ -560,17 +596,19 @@ func TestHandleJSONExpand(t *testing.T) {
 	cfg := &config.Config{
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
+		JWTSecret:       "test_secret",
 	}
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := NewApp(svc, nil)
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := NewApp(svc, nil, cfg)
 
 	tests := []struct {
 		name         string
 		method       string
 		path         string
 		storeSetup   func()
+		userID       string
 		expectedCode int
 		expectedBody string
 	}{
@@ -578,8 +616,9 @@ func TestHandleJSONExpand(t *testing.T) {
 			name:   "Success",
 			method: http.MethodGet,
 			path:   "/api/expand/testID",
+			userID: "test_user",
 			storeSetup: func() {
-				_, err := repo.Save("testID", "https://example.com")
+				_, err := repo.Save("testID", "https://example.com", "test_user")
 				assert.NoError(t, err, "Failed to save URL in storeSetup")
 			},
 			expectedCode: http.StatusOK,
@@ -589,6 +628,7 @@ func TestHandleJSONExpand(t *testing.T) {
 			name:         "NotFound",
 			method:       http.MethodGet,
 			path:         "/api/expand/unknownID",
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: `{"error":"URL not found"}`,
@@ -601,16 +641,22 @@ func TestHandleJSONExpand(t *testing.T) {
 			// Настраиваем хранилище
 			tt.storeSetup()
 			r := chi.NewRouter()
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
 			r.Get("/api/expand/{id}", func(w http.ResponseWriter, r *http.Request) {
 				appInstance.HandleJSONExpand(w, r)
 			})
 			server := httptest.NewServer(r)
 			defer server.Close()
-			// Нормализуем URL, чтобы избежать двойных слэшей
+			// Создаём запрос с UserID
 			req, err := http.NewRequest(tt.method, strings.TrimSuffix(server.URL, "/")+tt.path, nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
@@ -629,20 +675,34 @@ func TestHandleJSONExpand(t *testing.T) {
 
 // Тесты для HandlePing
 func TestHandlePing(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
+	// Создаём зависимости для svc
+	cfg := &config.Config{
+		JWTSecret: "test_secret",
+	}
+	repo, err := repository.NewFileRepository(tempFile.Name(), zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
+	svc := service.NewService(repo, "http://localhost:8080", cfg.JWTSecret)
+
 	tests := []struct {
 		name           string
 		method         string
 		dbSetup        func(*gomock.Controller) repository.Database
+		userID         string
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name:   "successful ping",
 			method: http.MethodGet,
+			userID: "test_user",
 			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(nil)
-				mockDB.EXPECT().Begin().Times(0)
 				return mockDB
 			},
 			expectedStatus: http.StatusOK,
@@ -651,10 +711,10 @@ func TestHandlePing(t *testing.T) {
 		{
 			name:   "database connection failed",
 			method: http.MethodGet,
+			userID: "test_user",
 			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				mockDB := repository.NewMockDatabase(ctrl)
 				mockDB.EXPECT().Ping().Return(errors.New("connection failed"))
-				mockDB.EXPECT().Begin().Times(0)
 				return mockDB
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -663,6 +723,7 @@ func TestHandlePing(t *testing.T) {
 		{
 			name:   "no database configured",
 			method: http.MethodGet,
+			userID: "test_user",
 			dbSetup: func(ctrl *gomock.Controller) repository.Database {
 				return nil
 			},
@@ -670,11 +731,10 @@ func TestHandlePing(t *testing.T) {
 			expectedBody:   "Database not configured\n",
 		},
 		{
-			name:   "wrong method",
-			method: http.MethodPost,
-			dbSetup: func(ctrl *gomock.Controller) repository.Database {
-				return nil
-			},
+			name:           "wrong method",
+			method:         http.MethodPost,
+			userID:         "test_user",
+			dbSetup:        func(*gomock.Controller) repository.Database { return nil },
 			expectedStatus: http.StatusMethodNotAllowed,
 			expectedBody:   "",
 		},
@@ -690,14 +750,20 @@ func TestHandlePing(t *testing.T) {
 			db := tt.dbSetup(ctrl)
 
 			// Создаём App с зависимостями
-			appInstance := NewApp(nil, db)
+			appInstance := NewApp(svc, db, cfg)
 
 			// Настраиваем маршрутизатор
 			r := chi.NewRouter()
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
 			r.Get("/ping", appInstance.HandlePing)
 
 			// Создаём тестовый запрос
 			req := httptest.NewRequest(tt.method, "/ping", nil)
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			// Выполняем запрос
@@ -722,11 +788,12 @@ func TestHandleBatchShorten(t *testing.T) {
 		RunAddr:         ":8080",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: tempFile.Name(),
+		JWTSecret:       "test_secret",
 	}
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
 	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := NewApp(svc, nil)
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := NewApp(svc, nil, cfg)
 
 	// Таблица тестов
 	tests := []struct {
@@ -736,6 +803,7 @@ func TestHandleBatchShorten(t *testing.T) {
 		contentType  string
 		useGzip      bool
 		storeSetup   func()
+		userID       string
 		expectedCode int
 		expectedBody string
 		verifyStore  bool
@@ -746,6 +814,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"},{"correlation_id":"2","original_url":"https://test.com"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusCreated,
 			verifyStore:  true,
@@ -756,6 +825,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         nil,
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusMethodNotAllowed,
 			expectedBody: "",
@@ -767,6 +837,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"}]`),
 			contentType:  "text/plain",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Content-Type must be application/json\n",
@@ -778,6 +849,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`{invalid json}`),
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Invalid JSON\n",
@@ -789,6 +861,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Empty batch\n",
@@ -800,6 +873,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"","original_url":"https://example.com"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Missing correlation_id\n",
@@ -811,6 +885,7 @@ func TestHandleBatchShorten(t *testing.T) {
 			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"invalid-url"}]`),
 			contentType:  "application/json",
 			useGzip:      false,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Invalid URL\n",
@@ -819,12 +894,25 @@ func TestHandleBatchShorten(t *testing.T) {
 		{
 			name:         "GzipRequestSuccess",
 			method:       http.MethodPost,
-			body:         nil, // Будет установлено в тесте
+			body:         nil,
 			contentType:  "application/json",
 			useGzip:      true,
+			userID:       "test_user",
 			storeSetup:   func() {},
 			expectedCode: http.StatusCreated,
 			verifyStore:  true,
+		},
+		{
+			name:         "NoUserID",
+			method:       http.MethodPost,
+			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"}]`),
+			contentType:  "application/json",
+			useGzip:      false,
+			userID:       "",
+			storeSetup:   func() {},
+			expectedCode: http.StatusUnauthorized,
+			expectedBody: "Unauthorized\n",
+			verifyStore:  false,
 		},
 	}
 
@@ -849,11 +937,17 @@ func TestHandleBatchShorten(t *testing.T) {
 			if tt.useGzip {
 				req.Header.Set("Content-Encoding", "gzip")
 			}
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
 			rr := httptest.NewRecorder()
 
 			// Настраиваем маршрутизатор
 			r := chi.NewRouter()
 			r.Use(middleware.GzipMiddleware)
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
 			r.Post("/api/shorten/batch", appInstance.HandleBatchShorten)
 
 			// Выполняем запрос
@@ -874,6 +968,116 @@ func TestHandleBatchShorten(t *testing.T) {
 					_, exists := repo.Get(id)
 					assert.True(t, exists, "URL should be stored")
 					assert.Contains(t, r.ShortURL, cfg.BaseURL, "Short URL should contain BaseURL")
+				}
+			}
+		})
+	}
+}
+
+// Тесты для HandleUserURLs
+func TestHandleUserURLs(t *testing.T) {
+	// Создаём временный файл для тестов
+	tempFile, err := os.CreateTemp("", "test_storage_*.json")
+	assert.NoError(t, err, "Failed to create temp file")
+	defer os.Remove(tempFile.Name())
+
+	// Создаём зависимости
+	cfg := &config.Config{
+		BaseURL:         "http://localhost:8080",
+		FileStoragePath: tempFile.Name(),
+		JWTSecret:       "test_secret",
+	}
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := NewApp(svc, nil, cfg)
+
+	tests := []struct {
+		name         string
+		method       string
+		userID       string
+		storeSetup   func()
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:   "SuccessWithURLs",
+			method: http.MethodGet,
+			userID: "test_user",
+			storeSetup: func() {
+				// Явно сохраняем URLs с userID
+				_, err := repo.Save("id1", "https://example.com", "test_user")
+				assert.NoError(t, err)
+				_, err = repo.Save("id2", "https://test.com", "test_user")
+				assert.NoError(t, err)
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: `[{"short_url":"http://localhost:8080/","original_url":"https://example.com"},{"short_url":"http://localhost:8080/","original_url":"https://test.com"}]`,
+		},
+		{
+			name:         "NoURLs",
+			method:       http.MethodGet,
+			userID:       "test_user",
+			storeSetup:   func() {},
+			expectedCode: http.StatusNoContent,
+			expectedBody: "",
+		},
+		{
+			name:         "NoUserID",
+			method:       http.MethodGet,
+			userID:       "",
+			storeSetup:   func() {},
+			expectedCode: http.StatusNoContent,
+			expectedBody: "",
+		},
+		{
+			name:         "InvalidMethod",
+			method:       http.MethodPost,
+			userID:       "test_user",
+			storeSetup:   func() {},
+			expectedCode: http.StatusMethodNotAllowed,
+			expectedBody: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Очищаем хранилище
+			repo.Clear()
+			tt.storeSetup()
+
+			// Настраиваем маршрутизатор
+			r := chi.NewRouter()
+			r.Use(middleware.GzipMiddleware)
+			r.Use(middleware.AuthMiddleware(svc, cfg, zap.NewNop()))
+			r.Get("/api/user/urls", appInstance.HandleUserURLs)
+
+			// Создаём запрос
+			req := httptest.NewRequest(tt.method, "/api/user/urls", nil)
+			ctx := context.Background()
+			if tt.userID != "" {
+				ctx = context.WithValue(ctx, middleware.UserIDKey{}, tt.userID)
+			}
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			// Выполняем запрос
+			r.ServeHTTP(rr, req)
+
+			// Проверяем результаты
+			assert.Equal(t, tt.expectedCode, rr.Code, "Status code mismatch")
+			if tt.expectedBody != "" {
+				if tt.expectedCode == http.StatusOK {
+					var resp []models.ShortURLResponse
+					err := json.Unmarshal(rr.Body.Bytes(), &resp)
+					assert.NoError(t, err, "Failed to unmarshal JSON response")
+					assert.Len(t, resp, 2, "Expected two URLs")
+					for _, r := range resp {
+						assert.Contains(t, r.ShortURL, cfg.BaseURL, "Short URL should contain BaseURL")
+						assert.Contains(t, []string{"https://example.com", "https://test.com"}, r.OriginalURL, "Unexpected original URL")
+					}
+				} else {
+					assert.Equal(t, tt.expectedBody, rr.Body.String(), "Response body mismatch")
 				}
 			}
 		})

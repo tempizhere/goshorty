@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Config содержит настройки приложения
@@ -13,6 +14,8 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	DatabaseDSN     string
+	JWTSecret       string
+	CookieTTL       time.Duration
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
@@ -22,6 +25,8 @@ func NewConfig() (*Config, error) {
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: "internal/storage/storage.json",
 		DatabaseDSN:     "",
+		JWTSecret:       "default_jwt_secret",
+		CookieTTL:       24 * time.Hour,
 	}
 
 	// Регистрируем флаги
@@ -29,6 +34,8 @@ func NewConfig() (*Config, error) {
 	flagBaseURL := flag.String("b", "http://localhost:8080", "base URL for shortened links")
 	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
+	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
+	flagCookieTTL := flag.Duration("t", 24*time.Hour, "cookie TTL duration")
 	flag.Parse()
 
 	// Проверяем переменные окружения
@@ -54,6 +61,26 @@ func NewConfig() (*Config, error) {
 		cfg.DatabaseDSN = dsn
 	} else if *flagDatabaseDSN != "" {
 		cfg.DatabaseDSN = *flagDatabaseDSN
+	}
+
+	if dsn := os.Getenv("DATABASE_DSN"); dsn != "" {
+		cfg.DatabaseDSN = dsn
+	} else if *flagDatabaseDSN != "" {
+		cfg.DatabaseDSN = *flagDatabaseDSN
+	}
+
+	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
+		cfg.JWTSecret = jwtSecret
+	} else if *flagJWTSecret != "" {
+		cfg.JWTSecret = *flagJWTSecret
+	}
+
+	if cookieTTL := os.Getenv("COOKIE_TTL"); cookieTTL != "" {
+		if ttl, err := time.ParseDuration(cookieTTL); err == nil {
+			cfg.CookieTTL = ttl
+		}
+	} else if *flagCookieTTL != 0 {
+		cfg.CookieTTL = *flagCookieTTL
 	}
 
 	// Валидация значений

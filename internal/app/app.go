@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/config"
+	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
@@ -29,19 +31,24 @@ type ExpandResponse struct {
 type App struct {
 	svc *service.Service
 	db  repository.Database
+	cfg *config.Config
 }
 
 // NewApp создаёт новый экземпляр App
-func NewApp(svc *service.Service, db repository.Database) *App {
-	return &App{svc: svc, db: db}
+func NewApp(svc *service.Service, db repository.Database, cfg *config.Config) *App {
+	return &App{svc: svc, db: db, cfg: cfg}
 }
 
 // createShortURL создаёт короткий URL и возвращает его или ошибку
-func (a *App) createShortURL(originalURL string) (string, error) {
+func (a *App) createShortURL(r *http.Request, originalURL string) (string, error) {
 	if originalURL == "" {
 		return "", errors.New("empty URL")
 	}
-	shortURL, err := a.svc.CreateShortURL(originalURL)
+	userID, ok := middleware.GetUserID(r)
+	if !ok || userID == "" {
+		return "", errors.New("no user ID")
+	}
+	shortURL, err := a.svc.CreateShortURL(originalURL, userID)
 	if err != nil {
 		return shortURL, err
 	}
@@ -68,7 +75,7 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(string(body))
+	shortURL, err := a.createShortURL(r, string(body))
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
@@ -129,7 +136,7 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(reqBody.URL)
+	shortURL, err := a.createShortURL(r, reqBody.URL)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			respBody := ShortenResponse{
@@ -194,6 +201,11 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
+	userID, ok := middleware.GetUserID(r)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	var reqBody []models.BatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -213,7 +225,7 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	respBody, err := a.svc.BatchShorten(reqBody)
+	respBody, err := a.svc.BatchShorten(reqBody, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			a.writeJSONResponse(w, http.StatusConflict, respBody)
@@ -238,4 +250,31 @@ func (a *App) writeJSONResponse(w http.ResponseWriter, status int, v interface{}
 		http.Error(w, "Failed to write response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// HandleUserURLs возвращает все URL пользователя
+func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := a.svc.GetURLsByUserID(userID)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	a.writeJSONResponse(w, http.StatusOK, urls)
 }

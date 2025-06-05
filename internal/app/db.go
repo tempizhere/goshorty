@@ -100,3 +100,8 @@ func (db *DB) Begin() (*sql.Tx, error) {
 	}
 	return db.conn.Begin()
 }
+
+// Query выполняет SQL-запрос и возвращает несколько строк
+func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return db.conn.Query(query, args...)
+}
