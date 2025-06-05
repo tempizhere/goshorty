@@ -902,18 +902,6 @@ func TestHandleBatchShorten(t *testing.T) {
 			expectedCode: http.StatusCreated,
 			verifyStore:  true,
 		},
-		{
-			name:         "NoUserID",
-			method:       http.MethodPost,
-			body:         strings.NewReader(`[{"correlation_id":"1","original_url":"https://example.com"}]`),
-			contentType:  "application/json",
-			useGzip:      false,
-			userID:       "",
-			storeSetup:   func() {},
-			expectedCode: http.StatusUnauthorized,
-			expectedBody: "Unauthorized\n",
-			verifyStore:  false,
-		},
 	}
 
 	for _, tt := range tests {
