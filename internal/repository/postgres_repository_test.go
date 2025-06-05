@@ -36,6 +36,7 @@ func TestPostgresRepository(t *testing.T) {
 		userID          string
 		expectedShortID string
 		expectedErr     error
+		execute         func(*PostgresRepository) error 
 	}{
 		{
 			name: "Save success",
@@ -105,17 +106,28 @@ func TestPostgresRepository(t *testing.T) {
 		{
 			name: "BatchSave success",
 			setup: func() {
+				mock.ExpectExec(regexp.QuoteMeta("TRUNCATE TABLE urls RESTART IDENTITY")).
+					WillReturnResult(sqlmock.NewResult(0, 0))
 				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET short_id = urls.short_id RETURNING short_id")).
+				query := regexp.QuoteMeta("INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET short_id = urls.short_id RETURNING short_id")
+				mock.ExpectQuery(query).
 					WithArgs("id1", "https://example.com", userID).
 					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id1"))
-				mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET short_id = urls.short_id RETURNING short_id")).
+				mock.ExpectQuery(query).
 					WithArgs("id2", "https://test.com", userID).
 					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id2"))
 				mock.ExpectCommit()
 			},
 			id:  "batch",
 			url: "https://example.com,https://test.com",
+			execute: func(r *PostgresRepository) error {
+				r.Clear()
+				urls := map[string]string{
+					"id1": "https://example.com",
+					"id2": "https://test.com",
+				}
+				return r.BatchSave(urls, userID)
+			},
 		},
 	}
 
@@ -123,7 +135,11 @@ func TestPostgresRepository(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 
-			if tt.id != "" && tt.id != "batch" {
+			if tt.execute != nil {
+				// Выполняем пользовательскую функцию
+				err := tt.execute(repo)
+				assert.Equal(t, tt.expectedErr, err)
+			} else if tt.id != "" && tt.id != "batch" {
 				if tt.url != "" {
 					// Тестируем Save
 					shortID, err := repo.Save(tt.id, tt.url, tt.userID)
@@ -135,19 +151,8 @@ func TestPostgresRepository(t *testing.T) {
 					assert.False(t, exists)
 					assert.Equal(t, "", url)
 				}
-			}
-
-			if tt.name == "Clear success" {
+			} else if tt.name == "Clear success" {
 				repo.Clear()
-			}
-
-			if tt.name == "BatchSave success" {
-				urls := map[string]string{
-					"id1": "https://example.com",
-					"id2": "https://test.com",
-				}
-				err := repo.BatchSave(urls, userID)
-				assert.NoError(t, err)
 			}
 
 			// Проверяем, что все ожидаемые вызовы мока выполнены
