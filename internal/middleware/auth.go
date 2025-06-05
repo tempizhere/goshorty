@@ -34,35 +34,6 @@ func AuthMiddleware(svc *service.Service, cfg *config.Config, logger *zap.Logger
 				}
 			}
 
-			// Требуем userID для защищённых маршрутов
-			protectedRoutes := map[string]bool{
-				"/api/user/urls":     true,
-				"/api/shorten/batch": true,
-			}
-			if userID == "" && protectedRoutes[r.URL.Path] && r.Method == http.MethodGet {
-				// Генерируем новый UserID для GET /api/user/urls
-				userID, err = svc.GenerateUserID()
-				if err != nil {
-					http.Error(w, "Internal server error", http.StatusInternalServerError)
-					return
-				}
-				token, err := svc.GenerateJWT(userID)
-				if err != nil {
-					http.Error(w, "Internal server error", http.StatusInternalServerError)
-					return
-				}
-				http.SetCookie(w, &http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Expires:  time.Now().Add(cfg.CookieTTL),
-					Path:     "/",
-					HttpOnly: true,
-				})
-			} else if userID == "" && protectedRoutes[r.URL.Path] {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
 			// Если userID не установлен, генерируем новый
 			if userID == "" {
 				userID, err = svc.GenerateUserID()

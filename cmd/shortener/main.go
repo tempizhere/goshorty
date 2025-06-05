@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
@@ -97,8 +102,40 @@ func main() {
 		appInstance.HandleUserURLs(w, r)
 	})
 
-	err = http.ListenAndServe(cfg.RunAddr, r)
-	if err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
+	// Настраиваем сервер
+	srv := &http.Server{
+		Addr:    cfg.RunAddr,
+		Handler: r,
 	}
+
+	// Graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Server failed", zap.Error(err))
+		}
+	}()
+
+	logger.Info("Server started", zap.String("addr", cfg.RunAddr))
+
+	<-ctx.Done()
+	logger.Info("Shutting down server...")
+
+	// Закрываем базу данных перед shutdown
+	if db != nil {
+		if err := db.Close(); err != nil {
+			logger.Error("Failed to close database", zap.Error(err))
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Server shutdown failed", zap.Error(err))
+	}
+
+	logger.Info("Server stopped")
 }

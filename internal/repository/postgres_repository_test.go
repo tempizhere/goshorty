@@ -36,7 +36,7 @@ func TestPostgresRepository(t *testing.T) {
 		userID          string
 		expectedShortID string
 		expectedErr     error
-		execute         func(*PostgresRepository) error 
+		execute         func(*PostgresRepository) error
 	}{
 		{
 			name: "Save success",
