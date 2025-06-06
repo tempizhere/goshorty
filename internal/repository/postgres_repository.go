@@ -26,6 +26,7 @@ func NewPostgresRepository(db Database, logger *zap.Logger) (*PostgresRepository
 }
 
 // Save сохраняет пару ID-URL в базе данных
+// Save сохраняет пару ID-URL в базе данных
 func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 	r.logger.Info("Attempting to save URL",
 		zap.String("short_id", id),
@@ -50,29 +51,43 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 
 	// Если URL не существует, выполняем INSERT
 	var shortID string
-	var userIDParam interface{}
+	var query string
+	var args []interface{}
 	if userID == "" {
-		userIDParam = nil
-		r.logger.Info("UserID is empty, using NULL")
+		// Без user_id
+		query = `
+			INSERT INTO urls (short_id, original_url)
+			VALUES ($1, $2)
+			ON CONFLICT (original_url)
+			DO UPDATE SET short_id = urls.short_id
+			RETURNING short_id
+		`
+		args = []interface{}{id, url}
+		r.logger.Info("Executing INSERT query without user_id",
+			zap.String("short_id", id),
+			zap.String("original_url", url))
 	} else {
-		userIDParam = userID
+		// С user_id
+		query = `
+			INSERT INTO urls (short_id, original_url, user_id)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (original_url)
+			DO UPDATE SET short_id = urls.short_id
+			RETURNING short_id
+		`
+		args = []interface{}{id, url, userID}
+		r.logger.Info("Executing INSERT query with user_id",
+			zap.String("short_id", id),
+			zap.String("original_url", url),
+			zap.String("user_id", userID))
 	}
-	r.logger.Info("Executing INSERT query",
-		zap.String("short_id", id),
-		zap.String("original_url", url),
-		zap.Any("user_id", userIDParam))
-	err = r.db.QueryRow(`
-		INSERT INTO urls (short_id, original_url, user_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (original_url)
-		DO UPDATE SET short_id = urls.short_id
-		RETURNING short_id
-	`, id, url, userIDParam).Scan(&shortID)
+
+	err = r.db.QueryRow(query, args...).Scan(&shortID)
 	if err != nil {
 		r.logger.Error("Failed to execute INSERT with ON CONFLICT",
 			zap.String("short_id", id),
 			zap.String("original_url", url),
-			zap.Any("user_id", userIDParam),
+			zap.String("user_id", userID),
 			zap.Error(err))
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			r.logger.Info("PostgreSQL error details",
@@ -91,7 +106,7 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 	r.logger.Info("URL saved successfully",
 		zap.String("short_id", id),
 		zap.String("original_url", url),
-		zap.Any("user_id", userIDParam))
+		zap.String("user_id", userID))
 	return id, nil
 }
 
