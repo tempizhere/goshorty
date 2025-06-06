@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 )
 
@@ -24,13 +25,55 @@ func NewPostgresRepository(db Database, logger *zap.Logger) (*PostgresRepository
 }
 
 // Save сохраняет пару ID-URL в базе данных
-func (r *PostgresRepository) Save(id, url string) error {
-	_, err := r.db.Exec("INSERT INTO urls (short_id, original_url) VALUES ($1, $2)", id, url)
-	if err != nil {
-		r.logger.Error("Failed to save URL to database", zap.String("short_id", id), zap.String("url", url), zap.Error(err))
-		return err
+func (r *PostgresRepository) Save(id, url string) (string, error) {
+	// Сначала проверяем, существует ли original_url
+	var existingID string
+	err := r.db.QueryRow("SELECT short_id FROM urls WHERE original_url = $1", url).Scan(&existingID)
+	if err == nil {
+		r.logger.Info("URL already exists",
+			zap.String("original_url", url),
+			zap.String("existing_short_id", existingID))
+		return existingID, ErrURLExists
 	}
-	return nil
+	if err != sql.ErrNoRows {
+		r.logger.Error("Failed to check existing URL",
+			zap.String("original_url", url),
+			zap.Error(err))
+		return "", err
+	}
+
+	// Если URL не существует, выполняем INSERT
+	var shortID string
+	err = r.db.QueryRow(`
+		INSERT INTO urls (short_id, original_url)
+		VALUES ($1, $2)
+		ON CONFLICT (original_url)
+		DO UPDATE SET short_id = urls.short_id
+		RETURNING short_id
+	`, id, url).Scan(&shortID)
+	if err != nil {
+		r.logger.Error("Failed to execute INSERT with ON CONFLICT",
+			zap.String("short_id", id),
+			zap.String("original_url", url),
+			zap.Error(err))
+		if pgErr, ok := err.(*pgconn.PgError); ok {
+			r.logger.Debug("PostgreSQL error details",
+				zap.String("code", pgErr.Code),
+				zap.String("message", pgErr.Message),
+				zap.String("constraint", pgErr.ConstraintName))
+		}
+		return "", err
+	}
+	if shortID != id {
+		r.logger.Info("URL already exists",
+			zap.String("original_url", url),
+			zap.String("existing_short_id", shortID))
+		return shortID, ErrURLExists
+	}
+	r.logger.Info("URL saved successfully",
+		zap.String("short_id", id),
+		zap.String("original_url", url))
+	return id, nil
 }
 
 // Get возвращает URL по ID, если он существует
@@ -63,11 +106,28 @@ func (r *PostgresRepository) BatchSave(urls map[string]string) error {
 		return err
 	}
 	for id, url := range urls {
-		_, err := tx.Exec("INSERT INTO urls (short_id, original_url) VALUES ($1, $2)", id, url)
+		var shortID string
+		err := tx.QueryRow(`
+			INSERT INTO urls (short_id, original_url)
+			VALUES ($1, $2)
+			ON CONFLICT (original_url)
+			DO UPDATE SET short_id = urls.short_id
+			RETURNING short_id
+		`, id, url).Scan(&shortID)
 		if err != nil {
-			r.logger.Error("Failed to save URL in transaction", zap.String("short_id", id), zap.String("url", url), zap.Error(err))
+			r.logger.Error("Failed to save URL in transaction",
+				zap.String("short_id", id),
+				zap.String("original_url", url),
+				zap.Error(err))
 			tx.Rollback()
 			return err
+		}
+		if shortID != id {
+			r.logger.Info("URL already exists in transaction",
+				zap.String("original_url", url),
+				zap.String("existing_short_id", shortID))
+			tx.Rollback()
+			return ErrURLExists
 		}
 	}
 	if err := tx.Commit(); err != nil {

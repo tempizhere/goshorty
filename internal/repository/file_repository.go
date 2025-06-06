@@ -19,18 +19,20 @@ type URLRecord struct {
 
 // FileRepository реализует интерфейс Repository с использованием файла
 type FileRepository struct {
-	store    map[string]string
-	filePath string
-	logger   *zap.Logger
-	mutex    sync.RWMutex
+	store        map[string]string // short_id -> original_url
+	urlToShortID map[string]string // original_url -> short_id
+	filePath     string
+	logger       *zap.Logger
+	mutex        sync.RWMutex
 }
 
 // NewFileRepository создаёт новый экземпляр FileRepository
 func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, error) {
 	repo := &FileRepository{
-		store:    make(map[string]string),
-		filePath: filePath,
-		logger:   logger,
+		store:        make(map[string]string),
+		urlToShortID: make(map[string]string),
+		filePath:     filePath,
+		logger:       logger,
 	}
 
 	// Создаём директорию, если не существует
@@ -66,6 +68,7 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 		}
 		repo.mutex.Lock()
 		repo.store[record.ShortURL] = record.OriginalURL
+		repo.urlToShortID[record.OriginalURL] = record.ShortURL
 		repo.mutex.Unlock()
 	}
 	if err := scanner.Err(); err != nil {
@@ -76,11 +79,18 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 }
 
 // Save сохраняет пару ID-URL в хранилище и файл
-func (r *FileRepository) Save(id, url string) error {
+func (r *FileRepository) Save(id, url string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	// Проверяем, существует ли original_url
+	if shortID, exists := r.urlToShortID[url]; exists {
+		r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
+		return shortID, ErrURLExists
+	}
+
 	r.store[id] = url
+	r.urlToShortID[url] = id
 
 	// Создаём запись для файла
 	record := URLRecord{
@@ -90,7 +100,7 @@ func (r *FileRepository) Save(id, url string) error {
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
-		return err
+		return "", err
 	}
 	data = append(data, '\n')
 
@@ -99,7 +109,7 @@ func (r *FileRepository) Save(id, url string) error {
 		if err := os.Chmod(r.filePath, 0644); err != nil {
 			// Если не удалось изменить права, попробуем удалить и пересоздать файл
 			if err := os.Remove(r.filePath); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
@@ -107,12 +117,14 @@ func (r *FileRepository) Save(id, url string) error {
 	// Дописываем в файл
 	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer file.Close()
 
-	_, err = file.Write(data)
-	return err
+	if _, err = file.Write(data); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 // Get возвращает URL по ID, если он существует
@@ -130,6 +142,7 @@ func (r *FileRepository) Clear() {
 	defer r.mutex.Unlock()
 
 	r.store = make(map[string]string)
+	r.urlToShortID = make(map[string]string)
 	// Пересоздаём пустой файл
 	os.Remove(r.filePath)
 	newFile, err := os.Create(r.filePath)
@@ -144,7 +157,12 @@ func (r *FileRepository) BatchSave(urls map[string]string) error {
 	defer r.mutex.Unlock()
 
 	for id, url := range urls {
+		if shortID, exists := r.urlToShortID[url]; exists {
+			r.logger.Info("URL already exists in batch", zap.String("original_url", url), zap.String("short_id", shortID))
+			return ErrURLExists
+		}
 		r.store[id] = url
+		r.urlToShortID[url] = id
 	}
 
 	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
