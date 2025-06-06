@@ -50,29 +50,20 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 
 	// Если URL не существует, выполняем INSERT
 	var shortID string
-	var userIDParam interface{}
-	if userID == "" {
-		userIDParam = nil
-		r.logger.Info("UserID is empty, using NULL")
-	} else {
-		userIDParam = userID
-	}
-	r.logger.Info("Executing INSERT query",
+	r.logger.Info("Executing INSERT query without user_id",
 		zap.String("short_id", id),
-		zap.String("original_url", url),
-		zap.Any("user_id", userIDParam))
+		zap.String("original_url", url))
 	err = r.db.QueryRow(`
-		INSERT INTO urls (short_id, original_url, user_id)
-		VALUES ($1, $2, $3)
+		INSERT INTO urls (short_id, original_url)
+		VALUES ($1, $2)
 		ON CONFLICT (original_url)
 		DO UPDATE SET short_id = urls.short_id
 		RETURNING short_id
-	`, id, url, userIDParam).Scan(&shortID)
+	`, id, url).Scan(&shortID)
 	if err != nil {
 		r.logger.Error("Failed to execute INSERT with ON CONFLICT",
 			zap.String("short_id", id),
 			zap.String("original_url", url),
-			zap.Any("user_id", userIDParam),
 			zap.Error(err))
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			r.logger.Info("PostgreSQL error details",
@@ -90,8 +81,7 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 	}
 	r.logger.Info("URL saved successfully",
 		zap.String("short_id", id),
-		zap.String("original_url", url),
-		zap.Any("user_id", userIDParam))
+		zap.String("original_url", url))
 	return id, nil
 }
 
@@ -127,12 +117,12 @@ func (r *PostgresRepository) BatchSave(urls map[string]string, userID string) er
 	for id, url := range urls {
 		var shortID string
 		err := tx.QueryRow(`
-			INSERT INTO urls (short_id, original_url, user_id)
-			VALUES ($1, $2, $3)
+			INSERT INTO urls (short_id, original_url)
+			VALUES ($1, $2)
 			ON CONFLICT (original_url)
 			DO UPDATE SET short_id = urls.short_id
 			RETURNING short_id
-		`, id, url, userID).Scan(&shortID)
+		`, id, url).Scan(&shortID)
 		if err != nil {
 			r.logger.Error("Failed to save URL in transaction",
 				zap.String("short_id", id),
@@ -158,14 +148,15 @@ func (r *PostgresRepository) BatchSave(urls map[string]string, userID string) er
 
 // GetURLsByUserID возвращает все URL, созданные пользователем
 func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
-	rows, err := r.db.Query("SELECT short_id, original_url, user_id FROM urls WHERE user_id = $1", userID)
+	r.logger.Info("Querying all URLs without user_id")
+	rows, err := r.db.Query("SELECT short_id, original_url, NULL as user_id FROM urls")
 	if err != nil {
-		r.logger.Error("Failed to query URLs by user_id", zap.String("user_id", userID), zap.Error(err))
+		r.logger.Error("Failed to query URLs", zap.String("user_id", userID), zap.Error(err))
 		return nil, err
 	}
 	defer rows.Close()
 
-	urls := make([]models.URL, 0) // Инициализируем пустой срез
+	urls := make([]models.URL, 0)
 	for rows.Next() {
 		var u models.URL
 		if err := rows.Scan(&u.ShortID, &u.OriginalURL, &u.UserID); err != nil {
@@ -179,5 +170,6 @@ func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error
 		return nil, err
 	}
 
+	r.logger.Info("Retrieved URLs", zap.Int("count", len(urls)))
 	return urls, nil
 }
