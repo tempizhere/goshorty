@@ -45,6 +45,10 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 
 	// Если URL не существует, выполняем INSERT
 	var shortID string
+	r.logger.Info("Executing INSERT query",
+		zap.String("short_id", id),
+		zap.String("original_url", url),
+		zap.String("user_id", userID))
 	err = r.db.QueryRow(`
 		INSERT INTO urls (short_id, original_url, user_id)
 		VALUES ($1, $2, $3)
