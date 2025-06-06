@@ -27,6 +27,11 @@ func NewPostgresRepository(db Database, logger *zap.Logger) (*PostgresRepository
 
 // Save сохраняет пару ID-URL в базе данных
 func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
+	r.logger.Debug("Attempting to save URL",
+		zap.String("short_id", id),
+		zap.String("original_url", url),
+		zap.String("user_id", userID))
+
 	// Сначала проверяем, существует ли original_url
 	var existingID string
 	err := r.db.QueryRow("SELECT short_id FROM urls WHERE original_url = $1", url).Scan(&existingID)
@@ -45,7 +50,7 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 
 	// Если URL не существует, выполняем INSERT
 	var shortID string
-	r.logger.Info("Executing INSERT query",
+	r.logger.Debug("Executing INSERT query",
 		zap.String("short_id", id),
 		zap.String("original_url", url),
 		zap.String("user_id", userID))

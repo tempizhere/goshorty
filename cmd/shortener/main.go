@@ -36,8 +36,11 @@ func main() {
 	}
 	defer func() {
 		if db != nil {
+			logger.Debug("Closing database connection in defer")
 			if err := db.Close(); err != nil {
-				logger.Error("Failed to close database", zap.Error(err))
+				logger.Error("Failed to close database in defer", zap.Error(err))
+			} else {
+				logger.Debug("Database connection closed successfully")
 			}
 		}
 	}()
@@ -113,28 +116,40 @@ func main() {
 	defer stop()
 
 	go func() {
+		logger.Debug("Starting server on", zap.String("addr", cfg.RunAddr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server failed", zap.Error(err))
+			logger.Error("Server failed to start", zap.Error(err))
 		}
+		logger.Debug("Server stopped listening")
 	}()
 
 	logger.Info("Server started", zap.String("addr", cfg.RunAddr))
 
 	<-ctx.Done()
-	logger.Info("Shutting down server...")
+	logger.Info("Received shutdown signal")
 
-	// Закрываем базу данных перед shutdown
+	// Задержка для обработки запросов
+	logger.Debug("Waiting for requests to complete")
+	time.Sleep(5 * time.Second)
+
+	// Закрываем базу данных
 	if db != nil {
+		logger.Info("Closing database connection")
 		if err := db.Close(); err != nil {
 			logger.Error("Failed to close database", zap.Error(err))
+		} else {
+			logger.Debug("Database connection closed successfully")
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	logger.Info("Shutting down server...")
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Server shutdown failed", zap.Error(err))
+	} else {
+		logger.Info("Server shutdown completed")
 	}
 
 	logger.Info("Server stopped")
