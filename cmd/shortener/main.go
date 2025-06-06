@@ -57,8 +57,8 @@ func main() {
 	}
 
 	// Создаём зависимости
-	svc := service.NewService(repo, cfg.BaseURL)
-	appInstance := app.NewApp(svc, db)
+	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
+	appInstance := app.NewApp(svc, db, logger)
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
@@ -66,6 +66,7 @@ func main() {
 	// Применение middleware
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.LoggingMiddleware(logger))
+	r.Use(middleware.AuthMiddleware(svc, logger))
 
 	// Регистрируем обработчики
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +92,12 @@ func main() {
 	})
 	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleBatchShorten(w, r)
+	})
+	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		appInstance.HandleUserURLs(w, r)
+	})
+	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
 	err = http.ListenAndServe(cfg.RunAddr, r)

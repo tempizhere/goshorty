@@ -7,48 +7,114 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
+	"go.uber.org/zap"
 )
 
 // Создаём структуры для JSON
 type ShortenRequest struct {
 	URL string `json:"url"`
 }
+
 type ShortenResponse struct {
 	Result string `json:"result"`
 }
+
 type ExpandResponse struct {
 	URL string `json:"url"`
 }
 
 // App содержит хендлеры и зависимости
 type App struct {
-	svc *service.Service
-	db  repository.Database
+	svc        *service.Service
+	db         repository.Database
+	logger     *zap.Logger
+	deleteChan chan deleteRequest
+}
+
+type deleteRequest struct {
+	userID string
+	ids    []string
 }
 
 // NewApp создаёт новый экземпляр App
-func NewApp(svc *service.Service, db repository.Database) *App {
-	return &App{svc: svc, db: db}
+func NewApp(svc *service.Service, db repository.Database, logger *zap.Logger) *App {
+	app := &App{
+		svc:        svc,
+		db:         db,
+		logger:     logger,
+		deleteChan: make(chan deleteRequest, 100),
+	}
+	go app.processDeleteRequests()
+	return app
+}
+
+// processDeleteRequests обрабатывает запросы на удаление с использованием fanIn
+func (a *App) processDeleteRequests() {
+	const batchSize = 50
+	const flushInterval = 5 * time.Second
+
+	var batch []deleteRequest
+	timer := time.NewTimer(flushInterval)
+	defer timer.Stop()
+
+	flushBatch := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		// Собираем все ID для одного пользователя
+		userBatches := make(map[string][]string)
+		for _, req := range batch {
+			userBatches[req.userID] = append(userBatches[req.userID], req.ids...)
+		}
+
+		for userID, ids := range userBatches {
+			if err := a.svc.BatchDelete(userID, ids); err != nil {
+				a.logger.Error("Failed to batch delete URLs",
+					zap.String("user_id", userID),
+					zap.Strings("ids", ids),
+					zap.Error(err))
+			} else {
+				a.logger.Info("Successfully processed batch delete",
+					zap.String("user_id", userID),
+					zap.Int("count", len(ids)))
+			}
+		}
+		batch = nil
+	}
+
+	for {
+		select {
+		case req := <-a.deleteChan:
+			batch = append(batch, req)
+			if len(batch) >= batchSize {
+				flushBatch()
+				timer.Reset(flushInterval)
+			}
+		case <-timer.C:
+			flushBatch()
+			timer.Reset(flushInterval)
+		}
+	}
 }
 
 // createShortURL создаёт короткий URL и возвращает его или ошибку
-func (a *App) createShortURL(originalURL string) (string, error) {
+func (a *App) createShortURL(originalURL string, userID string) (string, error) {
 	if originalURL == "" {
 		return "", errors.New("empty URL")
 	}
-	shortURL, err := a.svc.CreateShortURL(originalURL)
-	if err != nil {
-		return shortURL, err
-	}
-	return shortURL, nil
+	shortURL, err := a.svc.CreateShortURL(originalURL, userID)
+	return shortURL, err
 }
 
-// Обработчик POST-запросов на "/"
+// HandlePostURL обрабатывает POST-запросы на "/"
 func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -63,12 +129,18 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(string(body))
+	shortURL, err := a.createShortURL(string(body), userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
@@ -89,7 +161,7 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Обработчик GET-запросов на "/{id}"
+// HandleGetURL обрабатывает GET-запросы на "/{id}"
 func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -102,6 +174,11 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	}
 	originalURL, exists := a.svc.GetOriginalURL(id)
 	if !exists {
+		u, found := a.svc.Get(id)
+		if found && u.DeletedFlag {
+			http.Error(w, "URL is deleted", http.StatusGone)
+			return
+		}
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
 	}
@@ -109,7 +186,7 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-// Обработчик POST-запросов на "/api/shorten"
+// HandleJSONShorten обрабатывает POST-запросы на "/api/shorten"
 func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -129,7 +206,14 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(reqBody.URL)
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	shortURL, err := a.createShortURL(reqBody.URL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			respBody := ShortenResponse{
@@ -147,7 +231,7 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusCreated, respBody)
 }
 
-// Обработчик GET-запросов на "/api/expand/{id}"
+// HandleJSONExpand обрабатывает GET-запросы на "/api/expand/{id}"
 func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -167,7 +251,7 @@ func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusOK, respBody)
 }
 
-// Обработчик GET-запросов на "/ping"
+// HandlePing обрабатывает GET-запросы на "/ping"
 func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -184,7 +268,7 @@ func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// Обработчик POST-запросов на "/api/shorten/batch"
+// HandleBatchShorten обрабатывает POST-запросы на "/api/shorten/batch"
 func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -213,7 +297,14 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	respBody, err := a.svc.BatchShorten(reqBody)
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	respBody, err := a.svc.BatchShorten(reqBody, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			a.writeJSONResponse(w, http.StatusConflict, respBody)
@@ -223,6 +314,77 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSONResponse(w, http.StatusCreated, respBody)
+}
+
+// HandleUserURLs обрабатывает GET-запросы на "/api/user/urls"
+func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := a.svc.GetURLsByUserID(userID)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resp := make([]models.ShortURLResponse, len(urls))
+	for i, u := range urls {
+		resp[i] = models.ShortURLResponse{
+			ShortURL:    strings.TrimRight(a.svc.GetBaseURL(), "/") + "/" + u.ShortID,
+			OriginalURL: u.OriginalURL,
+		}
+	}
+
+	a.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
+func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(ids) == 0 {
+		http.Error(w, "Empty ID list", http.StatusBadRequest)
+		return
+	}
+
+	// Отправляем запрос на асинхронное удаление
+	a.deleteChan <- deleteRequest{
+		userID: userID,
+		ids:    ids,
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок

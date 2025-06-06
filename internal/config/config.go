@@ -13,6 +13,7 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	DatabaseDSN     string
+	JWTSecret       string
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
@@ -22,6 +23,7 @@ func NewConfig() (*Config, error) {
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: "internal/storage/storage.json",
 		DatabaseDSN:     "",
+		JWTSecret:       "default_jwt_secret",
 	}
 
 	// Регистрируем флаги
@@ -29,6 +31,7 @@ func NewConfig() (*Config, error) {
 	flagBaseURL := flag.String("b", "http://localhost:8080", "base URL for shortened links")
 	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
+	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
 	flag.Parse()
 
 	// Проверяем переменные окружения
@@ -54,6 +57,12 @@ func NewConfig() (*Config, error) {
 		cfg.DatabaseDSN = dsn
 	} else if *flagDatabaseDSN != "" {
 		cfg.DatabaseDSN = *flagDatabaseDSN
+	}
+
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		cfg.JWTSecret = secret
+	} else if *flagJWTSecret != "" {
+		cfg.JWTSecret = *flagJWTSecret
 	}
 
 	// Валидация значений
