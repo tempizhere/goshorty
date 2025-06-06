@@ -13,10 +13,11 @@ var (
 
 type Repository interface {
 	Save(id, url, userID string) (string, error)
-	Get(id string) (string, bool)
+	Get(id string) (models.URL, bool)
 	Clear()
 	BatchSave(urls map[string]string, userID string) error
 	GetURLsByUserID(userID string) ([]models.URL, error)
+	BatchDelete(userID string, ids []string) error
 }
 
 type Database interface {

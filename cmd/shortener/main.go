@@ -58,7 +58,7 @@ func main() {
 
 	// Создаём зависимости
 	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	appInstance := app.NewApp(svc, db)
+	appInstance := app.NewApp(svc, db, logger)
 
 	// Создаём маршрутизатор
 	r := chi.NewRouter()
@@ -95,6 +95,9 @@ func main() {
 	})
 	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		appInstance.HandleUserURLs(w, r)
+	})
+	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
 	err = http.ListenAndServe(cfg.RunAddr, r)
