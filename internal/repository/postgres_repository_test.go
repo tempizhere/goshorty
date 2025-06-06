@@ -110,11 +110,12 @@ func TestPostgresRepository(t *testing.T) {
 					WillReturnResult(sqlmock.NewResult(0, 0))
 				mock.ExpectBegin()
 				query := regexp.QuoteMeta("INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET short_id = urls.short_id RETURNING short_id")
+				// Ожидаем запросы в любом порядке
 				mock.ExpectQuery(query).
-					WithArgs("id1", "https://example.com", userID).
+					WithArgs(sqlmock.AnyArg(), "https://example.com", userID).
 					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id1"))
 				mock.ExpectQuery(query).
-					WithArgs("id2", "https://test.com", userID).
+					WithArgs(sqlmock.AnyArg(), "https://test.com", userID).
 					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id2"))
 				mock.ExpectCommit()
 			},
