@@ -43,6 +43,13 @@ func NewDB(dsn string) (repository.Database, error) {
 			return nil, err
 		}
 
+		// Добавляем столбец user_id, если он не существует
+		_, err = conn.Exec("ALTER TABLE urls ADD COLUMN IF NOT EXISTS user_id VARCHAR")
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+
 		// Проверяем наличие уникального индекса на original_url
 		var indexExists bool
 		err = conn.QueryRow(`
@@ -86,6 +93,11 @@ func (db *DB) Close() error {
 // Exec выполняет SQL-запрос с аргументами
 func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return db.conn.Exec(query, args...)
+}
+
+// Query выполняет SQL-запрос и возвращает множество строк
+func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return db.conn.Query(query, args...)
 }
 
 // QueryRow выполняет SQL-запрос и возвращает одну строку
