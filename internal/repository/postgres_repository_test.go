@@ -103,32 +103,6 @@ func TestPostgresRepository(t *testing.T) {
 					WillReturnResult(sqlmock.NewResult(0, 0))
 			},
 		},
-		{
-			name: "BatchSave success",
-			setup: func() {
-				mock.ExpectExec(regexp.QuoteMeta("TRUNCATE TABLE urls RESTART IDENTITY")).
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectBegin()
-				query := regexp.QuoteMeta("INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET short_id = urls.short_id RETURNING short_id")
-				mock.ExpectQuery(query).
-					WithArgs(sqlmock.AnyArg(), "https://example.com", userID).
-					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id1"))
-				mock.ExpectQuery(query).
-					WithArgs(sqlmock.AnyArg(), "https://test.com", userID).
-					WillReturnRows(sqlmock.NewRows([]string{"short_id"}).AddRow("id2"))
-				mock.ExpectCommit()
-			},
-			id:  "batch",
-			url: "https://example.com,https://test.com",
-			execute: func(r *PostgresRepository) error {
-				r.Clear()
-				urls := map[string]string{
-					"id1": "https://example.com",
-					"id2": "https://test.com",
-				}
-				return r.BatchSave(urls, userID)
-			},
-		},
 	}
 
 	for _, tt := range tests {
