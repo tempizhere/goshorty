@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
+	"go.uber.org/zap"
 )
 
 // Создаём структуры для JSON
@@ -30,21 +32,84 @@ type ExpandResponse struct {
 
 // App содержит хендлеры и зависимости
 type App struct {
-	svc *service.Service
-	db  repository.Database
+	svc        *service.Service
+	db         repository.Database
+	logger     *zap.Logger
+	deleteChan chan deleteRequest
 }
 
-// NewService создаёт новое приложение
-func NewApp(svc *service.Service, db repository.Database) *App {
-	return &App{svc: svc, db: db}
+type deleteRequest struct {
+	userID string
+	ids    []string
 }
 
-// CreateShortURL создаёт короткий URL и возвращает его или ошибку
+// NewApp создаёт новый экземпляр App
+func NewApp(svc *service.Service, db repository.Database, logger *zap.Logger) *App {
+	app := &App{
+		svc:        svc,
+		db:         db,
+		logger:     logger,
+		deleteChan: make(chan deleteRequest, 100),
+	}
+	go app.processDeleteRequests()
+	return app
+}
+
+// processDeleteRequests обрабатывает запросы на удаление с использованием fanIn
+func (a *App) processDeleteRequests() {
+	const batchSize = 50
+	const flushInterval = 5 * time.Second
+
+	var batch []deleteRequest
+	timer := time.NewTimer(flushInterval)
+	defer timer.Stop()
+
+	flushBatch := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		// Собираем все ID для одного пользователя
+		userBatches := make(map[string][]string)
+		for _, req := range batch {
+			userBatches[req.userID] = append(userBatches[req.userID], req.ids...)
+		}
+
+		for userID, ids := range userBatches {
+			if err := a.svc.BatchDelete(userID, ids); err != nil {
+				a.logger.Error("Failed to batch delete URLs",
+					zap.String("user_id", userID),
+					zap.Strings("ids", ids),
+					zap.Error(err))
+			} else {
+				a.logger.Info("Successfully processed batch delete",
+					zap.String("user_id", userID),
+					zap.Int("count", len(ids)))
+			}
+		}
+		batch = nil
+	}
+
+	for {
+		select {
+		case req := <-a.deleteChan:
+			batch = append(batch, req)
+			if len(batch) >= batchSize {
+				flushBatch()
+				timer.Reset(flushInterval)
+			}
+		case <-timer.C:
+			flushBatch()
+			timer.Reset(flushInterval)
+		}
+	}
+}
+
+// createShortURL создаёт короткий URL и возвращает его или ошибку
 func (a *App) createShortURL(originalURL string, userID string) (string, error) {
 	if originalURL == "" {
 		return "", errors.New("empty URL")
 	}
-
 	shortURL, err := a.svc.CreateShortURL(originalURL, userID)
 	return shortURL, err
 }
@@ -109,6 +174,11 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	}
 	originalURL, exists := a.svc.GetOriginalURL(id)
 	if !exists {
+		u, found := a.svc.Get(id)
+		if found && u.DeletedFlag {
+			http.Error(w, "URL is deleted", http.StatusGone)
+			return
+		}
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
 	}
@@ -279,6 +349,42 @@ func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
+func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(ids) == 0 {
+		http.Error(w, "Empty ID list", http.StatusBadRequest)
+		return
+	}
+
+	// Отправляем запрос на асинхронное удаление
+	a.deleteChan <- deleteRequest{
+		userID: userID,
+		ids:    ids,
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок

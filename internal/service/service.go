@@ -179,6 +179,15 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 
 // GetOriginalURL возвращает оригинальный URL по ID
 func (s *Service) GetOriginalURL(id string) (string, bool) {
+	u, exists := s.repo.Get(id)
+	if !exists || u.DeletedFlag {
+		return "", false
+	}
+	return u.OriginalURL, true
+}
+
+// Get возвращает полную информацию об URL по ID
+func (s *Service) Get(id string) (models.URL, bool) {
 	return s.repo.Get(id)
 }
 
@@ -195,4 +204,9 @@ func (s *Service) GetBaseURL() string {
 // GetURLsByUserID возвращает все URL, связанные с пользователем
 func (s *Service) GetURLsByUserID(userID string) ([]models.URL, error) {
 	return s.repo.GetURLsByUserID(userID)
+}
+
+// BatchDelete помечает указанные URL как удалённые
+func (s *Service) BatchDelete(userID string, ids []string) error {
+	return s.repo.BatchDelete(userID, ids)
 }
