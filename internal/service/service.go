@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 )
@@ -17,19 +19,22 @@ var (
 	ErrEmptyBatch      = errors.New("empty batch")
 	ErrDuplicateCorrID = errors.New("duplicate correlation_id")
 	ErrUniqueIDFailed  = errors.New("failed to generate unique ID")
+	ErrInvalidToken    = errors.New("invalid token")
 )
 
 // Service реализует логику работы с короткими URL
 type Service struct {
-	repo    repository.Repository
-	baseURL string
+	repo      repository.Repository
+	baseURL   string
+	jwtSecret string
 }
 
-// NewService создаёт новый экземпляр Service
-func NewService(repo repository.Repository, baseURL string) *Service {
+// NewService создаёт новый экземпляр сервиса
+func NewService(repo repository.Repository, baseURL, jwtSecret string) *Service {
 	return &Service{
-		repo:    repo,
-		baseURL: baseURL,
+		repo:      repo,
+		baseURL:   baseURL,
+		jwtSecret: jwtSecret,
 	}
 }
 
@@ -44,8 +49,44 @@ func (s *Service) GenerateShortID() (string, error) {
 	return encoded[:8], nil
 }
 
+// GenerateUserID генерирует уникальный идентификатор пользователя
+func (s *Service) GenerateUserID() (string, error) {
+	return s.GenerateShortID()
+}
+
+// GenerateJWT генерирует JWT с UserID
+func (s *Service) GenerateJWT(userID string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": userID,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	})
+	return token.SignedString([]byte(s.jwtSecret))
+}
+
+// ParseJWT проверяет и извлекает UserID из JWT
+func (s *Service) ParseJWT(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return []byte(s.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", ErrInvalidToken
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", ErrInvalidToken
+	}
+	userID, ok := claims["user_id"].(string)
+	if !ok {
+		return "", ErrInvalidToken
+	}
+	return userID, nil
+}
+
 // CreateShortURLWithID создаёт короткий URL с заданным ID
-func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
+func (s *Service) CreateShortURLWithID(originalURL, id, userID string) (string, error) {
 	if originalURL == "" {
 		return "", ErrEmptyURL
 	}
@@ -55,7 +96,7 @@ func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
 	if _, exists := s.repo.Get(id); exists {
 		return "", ErrIDAlreadyExists
 	}
-	shortID, err := s.repo.Save(id, originalURL)
+	shortID, err := s.repo.Save(id, originalURL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			return strings.TrimRight(s.baseURL, "/") + "/" + shortID, repository.ErrURLExists
@@ -66,7 +107,7 @@ func (s *Service) CreateShortURLWithID(originalURL, id string) (string, error) {
 }
 
 // CreateShortURL создаёт короткий URL
-func (s *Service) CreateShortURL(originalURL string) (string, error) {
+func (s *Service) CreateShortURL(originalURL, userID string) (string, error) {
 	var id string
 	var err error
 	for i := 0; i < 5; i++ {
@@ -74,7 +115,7 @@ func (s *Service) CreateShortURL(originalURL string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		shortURL, err := s.CreateShortURLWithID(originalURL, id)
+		shortURL, err := s.CreateShortURLWithID(originalURL, id, userID)
 		if err == nil {
 			return shortURL, nil
 		}
@@ -90,7 +131,7 @@ func (s *Service) CreateShortURL(originalURL string) (string, error) {
 }
 
 // BatchShorten создаёт короткие URL для списка запросов
-func (s *Service) BatchShorten(reqs []models.BatchRequest) ([]models.BatchResponse, error) {
+func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]models.BatchResponse, error) {
 	if len(reqs) == 0 {
 		return nil, ErrEmptyBatch
 	}
@@ -127,7 +168,7 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest) ([]models.BatchRespon
 			ShortURL:      shortURL,
 		}
 	}
-	if err := s.repo.BatchSave(urls); err != nil {
+	if err := s.repo.BatchSave(urls, userID); err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			return resp, repository.ErrURLExists
 		}
@@ -144,4 +185,14 @@ func (s *Service) GetOriginalURL(id string) (string, bool) {
 // ExtractIDFromShortURL извлекает ID из короткого URL
 func (s *Service) ExtractIDFromShortURL(shortURL string) string {
 	return shortURL[strings.LastIndex(shortURL, "/")+1:]
+}
+
+// GetBaseURL возвращает базовый URL сервиса
+func (s *Service) GetBaseURL() string {
+	return s.baseURL
+}
+
+// GetURLsByUserID возвращает все URL, связанные с пользователем
+func (s *Service) GetURLsByUserID(userID string) ([]models.URL, error) {
+	return s.repo.GetURLsByUserID(userID)
 }
