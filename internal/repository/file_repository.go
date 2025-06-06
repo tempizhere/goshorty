@@ -19,18 +19,20 @@ type URLRecord struct {
 
 // FileRepository реализует интерфейс Repository с использованием файла
 type FileRepository struct {
-	store    map[string]string
-	filePath string
-	logger   *zap.Logger
-	mutex    sync.RWMutex
+	store        map[string]string // short_id -> original_url
+	urlToShortID map[string]string // original_url -> short_id
+	filePath     string
+	logger       *zap.Logger
+	mutex        sync.RWMutex
 }
 
 // NewFileRepository создаёт новый экземпляр FileRepository
 func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, error) {
 	repo := &FileRepository{
-		store:    make(map[string]string),
-		filePath: filePath,
-		logger:   logger,
+		store:        make(map[string]string),
+		urlToShortID: make(map[string]string),
+		filePath:     filePath,
+		logger:       logger,
 	}
 
 	// Создаём директорию, если не существует
@@ -66,6 +68,7 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 		}
 		repo.mutex.Lock()
 		repo.store[record.ShortURL] = record.OriginalURL
+		repo.urlToShortID[record.OriginalURL] = record.ShortURL
 		repo.mutex.Unlock()
 	}
 	if err := scanner.Err(); err != nil {
@@ -81,14 +84,13 @@ func (r *FileRepository) Save(id, url string) (string, error) {
 	defer r.mutex.Unlock()
 
 	// Проверяем, существует ли original_url
-	for shortID, originalURL := range r.store {
-		if originalURL == url {
-			r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
-			return shortID, ErrURLExists
-		}
+	if shortID, exists := r.urlToShortID[url]; exists {
+		r.logger.Info("URL already exists", zap.String("original_url", url), zap.String("short_id", shortID))
+		return shortID, ErrURLExists
 	}
 
 	r.store[id] = url
+	r.urlToShortID[url] = id
 
 	// Создаём запись для файла
 	record := URLRecord{
@@ -140,6 +142,7 @@ func (r *FileRepository) Clear() {
 	defer r.mutex.Unlock()
 
 	r.store = make(map[string]string)
+	r.urlToShortID = make(map[string]string)
 	// Пересоздаём пустой файл
 	os.Remove(r.filePath)
 	newFile, err := os.Create(r.filePath)
@@ -154,7 +157,12 @@ func (r *FileRepository) BatchSave(urls map[string]string) error {
 	defer r.mutex.Unlock()
 
 	for id, url := range urls {
+		if shortID, exists := r.urlToShortID[url]; exists {
+			r.logger.Info("URL already exists in batch", zap.String("original_url", url), zap.String("short_id", shortID))
+			return ErrURLExists
+		}
 		r.store[id] = url
+		r.urlToShortID[url] = id
 	}
 
 	file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
