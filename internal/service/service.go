@@ -225,7 +225,6 @@ func (s *Service) BatchDelete(userID string, ids []string) error {
 // BatchDeleteAsync асинхронно помечает указанные URL как удалённые
 func (s *Service) BatchDeleteAsync(userID string, ids []string) {
 	go func() {
-		if err := s.BatchDelete(userID, ids); err != nil {
-		}
+		s.BatchDelete(userID, ids)
 	}()
 }
