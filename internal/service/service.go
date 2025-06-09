@@ -202,11 +202,30 @@ func (s *Service) GetBaseURL() string {
 }
 
 // GetURLsByUserID возвращает все URL, связанные с пользователем
-func (s *Service) GetURLsByUserID(userID string) ([]models.URL, error) {
-	return s.repo.GetURLsByUserID(userID)
+func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, error) {
+	urls, err := s.repo.GetURLsByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	resp := make([]models.ShortURLResponse, len(urls))
+	for i, u := range urls {
+		resp[i] = models.ShortURLResponse{
+			ShortURL:    strings.TrimRight(s.baseURL, "/") + "/" + u.ShortID,
+			OriginalURL: u.OriginalURL,
+		}
+	}
+	return resp, nil
 }
 
 // BatchDelete помечает указанные URL как удалённые
 func (s *Service) BatchDelete(userID string, ids []string) error {
 	return s.repo.BatchDelete(userID, ids)
+}
+
+// BatchDeleteAsync асинхронно помечает указанные URL как удалённые
+func (s *Service) BatchDeleteAsync(userID string, ids []string) {
+	go func() {
+		if err := s.BatchDelete(userID, ids); err != nil {
+		}
+	}()
 }

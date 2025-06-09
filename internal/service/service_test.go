@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/tempizhere/goshorty/internal/models"
@@ -67,7 +68,7 @@ func (m *mockRepository) BatchSave(urls map[string]string, userID string) error 
 func (m *mockRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
 	var urls []models.URL
 	for _, u := range m.store {
-		if u.UserID == userID {
+		if u.UserID == userID && !u.DeletedFlag {
 			urls = append(urls, u)
 		}
 	}
@@ -139,6 +140,7 @@ func TestService(t *testing.T) {
 	assert.Len(t, urls, 2, "Should return two URLs for test user")
 	assert.Equal(t, "https://example.com", urls[0].OriginalURL, "First URL should match")
 	assert.Equal(t, "https://another.com", urls[1].OriginalURL, "Second URL should match")
+	assert.True(t, strings.HasPrefix(urls[0].ShortURL, "http://localhost:8080/"), "Short URL should start with baseURL")
 
 	// Тест 11: GetURLsByUserID для несуществующего пользователя
 	urls, err = svc.GetURLsByUserID("unknown_user")
@@ -157,4 +159,143 @@ func TestService(t *testing.T) {
 	// Тест 13: BatchDelete для несуществующих ID
 	err = svc.BatchDelete(testUserID, []string{"unknown"})
 	assert.NoError(t, err, "BatchDelete should not return error")
+
+	// Тест 14: BatchDeleteAsync успех
+	repo = &mockRepository{store: make(map[string]models.URL)}
+	svc = NewService(repo, "http://localhost:8080", "secret")
+	_, err = repo.Save("testID", "https://test.com", testUserID)
+	assert.NoError(t, err, "Save should not return error")
+	svc.BatchDeleteAsync(testUserID, []string{"testID"})
+	// Поскольку асинхронный вызов, проверяем через небольшой таймер
+	time.Sleep(100 * time.Millisecond)
+	u, exists = repo.Get("testID")
+	assert.True(t, exists, "URL should still exist")
+	assert.True(t, u.DeletedFlag, "URL should be marked as deleted")
+}
+
+func TestBatchShorten(t *testing.T) {
+	const testUserID = "test_user"
+	tests := []struct {
+		name    string
+		reqs    []models.BatchRequest
+		wantErr string
+		wantLen int
+	}{
+		{
+			name:    "empty batch",
+			reqs:    []models.BatchRequest{},
+			wantErr: ErrEmptyBatch.Error(),
+			wantLen: 0,
+		},
+		{
+			name: "duplicate correlation_id",
+			reqs: []models.BatchRequest{
+				{CorrelationID: "1", OriginalURL: "https://example.com"},
+				{CorrelationID: "1", OriginalURL: "https://example.org"},
+			},
+			wantErr: ErrDuplicateCorrID.Error(),
+			wantLen: 0,
+		},
+		{
+			name: "empty URL",
+			reqs: []models.BatchRequest{
+				{CorrelationID: "1", OriginalURL: ""},
+			},
+			wantErr: ErrEmptyURL.Error(),
+			wantLen: 0,
+		},
+		{
+			name: "successful batch",
+			reqs: []models.BatchRequest{
+				{CorrelationID: "1", OriginalURL: "https://example.com"},
+				{CorrelationID: "2", OriginalURL: "https://example.org"},
+			},
+			wantErr: "",
+			wantLen: 2,
+		},
+		{
+			name: "batch save failure",
+			reqs: []models.BatchRequest{
+				{CorrelationID: "1", OriginalURL: "https://fail.com"},
+				{CorrelationID: "2", OriginalURL: "https://example.org"},
+			},
+			wantErr: "batch save failed",
+			wantLen: 0,
+		},
+		{
+			name: "duplicate URL",
+			reqs: []models.BatchRequest{
+				{CorrelationID: "1", OriginalURL: "https://duplicate.com"},
+				{CorrelationID: "2", OriginalURL: "https://duplicate.com"},
+			},
+			wantErr: repository.ErrURLExists.Error(),
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockRepository{store: make(map[string]models.URL)}
+			svc := NewService(repo, "http://localhost:8080", "secret")
+
+			// Подготовка данных для теста "duplicate URL"
+			if tt.name == "duplicate URL" {
+				_, err := repo.Save("existingID", "https://duplicate.com", testUserID)
+				assert.NoError(t, err, "Save should not return error")
+			}
+
+			resp, err := svc.BatchShorten(tt.reqs, testUserID)
+
+			if tt.wantErr != "" {
+				assert.EqualError(t, err, tt.wantErr)
+				if tt.wantLen == 0 {
+					assert.Nil(t, resp)
+				} else {
+					assert.Len(t, resp, tt.wantLen)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Len(t, resp, tt.wantLen)
+
+			// Проверяем корректность созданных URL
+			for i, r := range resp {
+				// Проверяем формат короткого URL
+				assert.True(t, strings.HasPrefix(r.ShortURL, "http://localhost:8080/"))
+				assert.Equal(t, tt.reqs[i].CorrelationID, r.CorrelationID)
+
+				// Проверяем, что URL сохранен в хранилище
+				id := svc.ExtractIDFromShortURL(r.ShortURL)
+				originalURL, exists := repo.Get(id)
+				assert.True(t, exists)
+				assert.Equal(t, tt.reqs[i].OriginalURL, originalURL.OriginalURL)
+			}
+		})
+	}
+}
+
+func TestJWT(t *testing.T) {
+	svc := NewService(&mockRepository{store: make(map[string]models.URL)}, "http://localhost:8080", "secret")
+
+	// Тест 1: GenerateUserID успех
+	userID, err := svc.GenerateUserID()
+	assert.NoError(t, err, "GenerateUserID should not return error")
+	assert.Len(t, userID, 8, "UserID should be 8 characters long")
+
+	// Тест 2: GenerateJWT и ParseJWT успех
+	token, err := svc.GenerateJWT(userID)
+	assert.NoError(t, err, "GenerateJWT should not return error")
+	parsedUserID, err := svc.ParseJWT(token)
+	assert.NoError(t, err, "ParseJWT should not return error")
+	assert.Equal(t, userID, parsedUserID, "Parsed UserID should match")
+
+	// Тест 3: ParseJWT с некорректным токеном
+	_, err = svc.ParseJWT("invalid.token")
+	assert.ErrorIs(t, err, ErrInvalidToken, "ParseJWT should return ErrInvalidToken")
+
+	// Тест 4: ParseJWT с неверным секретом
+	svcWrongSecret := NewService(&mockRepository{store: make(map[string]models.URL)}, "http://localhost:8080", "wrong_secret")
+	_, err = svcWrongSecret.ParseJWT(token)
+	assert.ErrorIs(t, err, ErrInvalidToken, "ParseJWT should return ErrInvalidToken with wrong secret")
 }

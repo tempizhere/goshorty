@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/middleware"
@@ -32,76 +31,17 @@ type ExpandResponse struct {
 
 // App содержит хендлеры и зависимости
 type App struct {
-	svc        *service.Service
-	db         repository.Database
-	logger     *zap.Logger
-	deleteChan chan deleteRequest
-}
-
-type deleteRequest struct {
-	userID string
-	ids    []string
+	svc    *service.Service
+	db     repository.Database
+	logger *zap.Logger
 }
 
 // NewApp создаёт новый экземпляр App
 func NewApp(svc *service.Service, db repository.Database, logger *zap.Logger) *App {
-	app := &App{
-		svc:        svc,
-		db:         db,
-		logger:     logger,
-		deleteChan: make(chan deleteRequest, 100),
-	}
-	go app.processDeleteRequests()
-	return app
-}
-
-// processDeleteRequests обрабатывает запросы на удаление с использованием fanIn
-func (a *App) processDeleteRequests() {
-	const batchSize = 50
-	const flushInterval = 5 * time.Second
-
-	var batch []deleteRequest
-	timer := time.NewTimer(flushInterval)
-	defer timer.Stop()
-
-	flushBatch := func() {
-		if len(batch) == 0 {
-			return
-		}
-
-		// Собираем все ID для одного пользователя
-		userBatches := make(map[string][]string)
-		for _, req := range batch {
-			userBatches[req.userID] = append(userBatches[req.userID], req.ids...)
-		}
-
-		for userID, ids := range userBatches {
-			if err := a.svc.BatchDelete(userID, ids); err != nil {
-				a.logger.Error("Failed to batch delete URLs",
-					zap.String("user_id", userID),
-					zap.Strings("ids", ids),
-					zap.Error(err))
-			} else {
-				a.logger.Info("Successfully processed batch delete",
-					zap.String("user_id", userID),
-					zap.Int("count", len(ids)))
-			}
-		}
-		batch = nil
-	}
-
-	for {
-		select {
-		case req := <-a.deleteChan:
-			batch = append(batch, req)
-			if len(batch) >= batchSize {
-				flushBatch()
-				timer.Reset(flushInterval)
-			}
-		case <-timer.C:
-			flushBatch()
-			timer.Reset(flushInterval)
-		}
+	return &App{
+		svc:    svc,
+		db:     db,
+		logger: logger,
 	}
 }
 
@@ -109,6 +49,9 @@ func (a *App) processDeleteRequests() {
 func (a *App) createShortURL(originalURL string, userID string) (string, error) {
 	if originalURL == "" {
 		return "", errors.New("empty URL")
+	}
+	if _, err := url.ParseRequestURI(originalURL); err != nil {
+		return "", errors.New("invalid URL")
 	}
 	shortURL, err := a.svc.CreateShortURL(originalURL, userID)
 	return shortURL, err
@@ -140,7 +83,8 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(string(body), userID)
+	originalURL := strings.TrimSpace(string(body))
+	shortURL, err := a.createShortURL(originalURL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
@@ -340,15 +284,7 @@ func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := make([]models.ShortURLResponse, len(urls))
-	for i, u := range urls {
-		resp[i] = models.ShortURLResponse{
-			ShortURL:    strings.TrimRight(a.svc.GetBaseURL(), "/") + "/" + u.ShortID,
-			OriginalURL: u.OriginalURL,
-		}
-	}
-
-	a.writeJSONResponse(w, http.StatusOK, resp)
+	a.writeJSONResponse(w, http.StatusOK, urls)
 }
 
 // HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
@@ -373,16 +309,9 @@ func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if len(ids) == 0 {
-		http.Error(w, "Empty ID list", http.StatusBadRequest)
-		return
-	}
 
-	// Отправляем запрос на асинхронное удаление
-	a.deleteChan <- deleteRequest{
-		userID: userID,
-		ids:    ids,
-	}
+	// Вызываем асинхронное удаление через сервис
+	a.svc.BatchDeleteAsync(userID, ids)
 
 	w.WriteHeader(http.StatusAccepted)
 }

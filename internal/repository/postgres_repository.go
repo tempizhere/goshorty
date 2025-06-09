@@ -173,7 +173,7 @@ func (r *PostgresRepository) BatchSave(urls map[string]string, userID string) er
 
 // GetURLsByUserID возвращает все URL, связанные с пользователем
 func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
-	rows, err := r.db.Query("SELECT short_id, original_url, user_id, is_deleted FROM urls WHERE user_id = $1", userID)
+	rows, err := r.db.Query("SELECT short_id, original_url, user_id, is_deleted FROM urls WHERE user_id = $1 AND is_deleted = FALSE", userID)
 	if err != nil {
 		r.logger.Error("Failed to query URLs by user_id", zap.String("user_id", userID), zap.Error(err))
 		return nil, err
