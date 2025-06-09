@@ -31,6 +31,13 @@ func NewPostgresRepository(db Database, logger *zap.Logger) (*PostgresRepository
 		return nil, err
 	}
 
+	// Добавляем столбец is_deleted, если он не существует
+	_, err = db.Exec("ALTER TABLE urls ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE")
+	if err != nil {
+		logger.Error("Failed to add is_deleted column", zap.Error(err))
+		return nil, err
+	}
+
 	return repo, nil
 }
 
@@ -94,17 +101,20 @@ func (r *PostgresRepository) Save(id, url, userID string) (string, error) {
 }
 
 // Get возвращает URL по ID, если он существует
-func (r *PostgresRepository) Get(id string) (string, bool) {
-	var url string
-	err := r.db.QueryRow("SELECT original_url FROM urls WHERE short_id = $1", id).Scan(&url)
+func (r *PostgresRepository) Get(id string) (models.URL, bool) {
+	var u models.URL
+	var userID sql.NullString
+	err := r.db.QueryRow("SELECT short_id, original_url, user_id, is_deleted FROM urls WHERE short_id = $1", id).
+		Scan(&u.ShortID, &u.OriginalURL, &userID, &u.DeletedFlag)
 	if err == sql.ErrNoRows {
-		return "", false
+		return models.URL{}, false
 	}
 	if err != nil {
 		r.logger.Error("Failed to get URL from database", zap.String("short_id", id), zap.Error(err))
-		return "", false
+		return models.URL{}, false
 	}
-	return url, true
+	u.UserID = userID.String
+	return u, true
 }
 
 // Clear очищает все записи в таблице urls
@@ -163,7 +173,7 @@ func (r *PostgresRepository) BatchSave(urls map[string]string, userID string) er
 
 // GetURLsByUserID возвращает все URL, связанные с пользователем
 func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
-	rows, err := r.db.Query("SELECT short_id, original_url, user_id FROM urls WHERE user_id = $1", userID)
+	rows, err := r.db.Query("SELECT short_id, original_url, user_id, is_deleted FROM urls WHERE user_id = $1 AND is_deleted = FALSE", userID)
 	if err != nil {
 		r.logger.Error("Failed to query URLs by user_id", zap.String("user_id", userID), zap.Error(err))
 		return nil, err
@@ -174,7 +184,7 @@ func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error
 	for rows.Next() {
 		var u models.URL
 		var userIDValue sql.NullString
-		if err := rows.Scan(&u.ShortID, &u.OriginalURL, &userIDValue); err != nil {
+		if err := rows.Scan(&u.ShortID, &u.OriginalURL, &userIDValue, &u.DeletedFlag); err != nil {
 			r.logger.Error("Failed to scan URL row", zap.Error(err))
 			return nil, err
 		}
@@ -186,4 +196,26 @@ func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error
 		return nil, err
 	}
 	return urls, nil
+}
+
+// BatchDelete помечает указанные URL как удалённые
+func (r *PostgresRepository) BatchDelete(userID string, ids []string) error {
+	query := "UPDATE urls SET is_deleted = TRUE WHERE short_id = ANY($1) AND user_id = $2"
+	result, err := r.db.Exec(query, ids, userID)
+	if err != nil {
+		r.logger.Error("Failed to batch delete URLs",
+			zap.String("user_id", userID),
+			zap.Strings("ids", ids),
+			zap.Error(err))
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		r.logger.Error("Failed to get rows affected", zap.Error(err))
+		return err
+	}
+	r.logger.Info("Batch delete completed",
+		zap.String("user_id", userID),
+		zap.Int64("rows_affected", rowsAffected))
+	return nil
 }

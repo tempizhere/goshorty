@@ -36,17 +36,18 @@ func (r *MemoryRepository) Save(id, url, userID string) (string, error) {
 		ShortID:     id,
 		OriginalURL: url,
 		UserID:      userID,
+		DeletedFlag: false,
 	}
 	return id, nil
 }
 
 // Get возвращает URL по ID, если он существует
-func (r *MemoryRepository) Get(id string) (string, bool) {
+func (r *MemoryRepository) Get(id string) (models.URL, bool) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
 	u, exists := r.store[id]
-	return u.OriginalURL, exists
+	return u, exists
 }
 
 // Clear очищает хранилище
@@ -72,6 +73,7 @@ func (r *MemoryRepository) BatchSave(urls map[string]string, userID string) erro
 			ShortID:     id,
 			OriginalURL: url,
 			UserID:      userID,
+			DeletedFlag: false,
 		}
 	}
 	return nil
@@ -89,4 +91,18 @@ func (r *MemoryRepository) GetURLsByUserID(userID string) ([]models.URL, error) 
 		}
 	}
 	return urls, nil
+}
+
+// BatchDelete помечает указанные URL как удалённые
+func (r *MemoryRepository) BatchDelete(userID string, ids []string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for _, id := range ids {
+		if u, exists := r.store[id]; exists && u.UserID == userID {
+			u.DeletedFlag = true
+			r.store[id] = u
+		}
+	}
+	return nil
 }

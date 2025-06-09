@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/tempizhere/goshorty/internal/models"
@@ -28,13 +29,14 @@ func (m *mockRepository) Save(id, url, userID string) (string, error) {
 		ShortID:     id,
 		OriginalURL: url,
 		UserID:      userID,
+		DeletedFlag: false,
 	}
 	return id, nil
 }
 
-func (m *mockRepository) Get(id string) (string, bool) {
+func (m *mockRepository) Get(id string) (models.URL, bool) {
 	url, exists := m.store[id]
-	return url.OriginalURL, exists
+	return url, exists
 }
 
 func (m *mockRepository) Clear() {
@@ -57,6 +59,7 @@ func (m *mockRepository) BatchSave(urls map[string]string, userID string) error 
 			ShortID:     id,
 			OriginalURL: url,
 			UserID:      userID,
+			DeletedFlag: false,
 		}
 	}
 	return nil
@@ -65,11 +68,21 @@ func (m *mockRepository) BatchSave(urls map[string]string, userID string) error 
 func (m *mockRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
 	var urls []models.URL
 	for _, u := range m.store {
-		if u.UserID == userID {
+		if u.UserID == userID && !u.DeletedFlag {
 			urls = append(urls, u)
 		}
 	}
 	return urls, nil
+}
+
+func (m *mockRepository) BatchDelete(userID string, ids []string) error {
+	for _, id := range ids {
+		if u, exists := m.store[id]; exists && u.UserID == userID {
+			u.DeletedFlag = true
+			m.store[id] = u
+		}
+	}
+	return nil
 }
 
 func TestService(t *testing.T) {
@@ -125,13 +138,50 @@ func TestService(t *testing.T) {
 	urls, err := svc.GetURLsByUserID(testUserID)
 	assert.NoError(t, err, "GetURLsByUserID should not return error")
 	assert.Len(t, urls, 2, "Should return two URLs for test user")
-	assert.Equal(t, "https://example.com", urls[0].OriginalURL, "First URL should match")
-	assert.Equal(t, "https://another.com", urls[1].OriginalURL, "Second URL should match")
+
+	// Проверяем, что URLs содержат ожидаемые значения в любом порядке
+	var foundExample, foundAnother bool
+	for _, u := range urls {
+		if u.OriginalURL == "https://example.com" {
+			foundExample = true
+			assert.True(t, strings.HasPrefix(u.ShortURL, "http://localhost:8080/"), "Short URL should start with baseURL")
+		}
+		if u.OriginalURL == "https://another.com" {
+			foundAnother = true
+		}
+	}
+	assert.True(t, foundExample, "Should contain https://example.com")
+	assert.True(t, foundAnother, "Should contain https://another.com")
 
 	// Тест 11: GetURLsByUserID для несуществующего пользователя
 	urls, err = svc.GetURLsByUserID("unknown_user")
 	assert.NoError(t, err, "GetURLsByUserID should not return error")
 	assert.Len(t, urls, 0, "Should return empty list for unknown user")
+
+	// Тест 12: BatchDelete успех
+	err = svc.BatchDelete(testUserID, []string{id, "existingID"})
+	assert.NoError(t, err, "BatchDelete should not return error")
+	u, exists := repo.Get(id)
+	assert.True(t, exists, "URL should still exist")
+	assert.True(t, u.DeletedFlag, "URL should be marked as deleted")
+	_, exists = svc.GetOriginalURL(id)
+	assert.False(t, exists, "GetOriginalURL should return false for deleted URL")
+
+	// Тест 13: BatchDelete для несуществующих ID
+	err = svc.BatchDelete(testUserID, []string{"unknown"})
+	assert.NoError(t, err, "BatchDelete should not return error")
+
+	// Тест 14: BatchDeleteAsync успех
+	repo = &mockRepository{store: make(map[string]models.URL)}
+	svc = NewService(repo, "http://localhost:8080", "secret")
+	_, err = repo.Save("testID", "https://test.com", testUserID)
+	assert.NoError(t, err, "Save should not return error")
+	svc.BatchDeleteAsync(testUserID, []string{"testID"})
+	// Поскольку асинхронный вызов, проверяем через небольшой таймер
+	time.Sleep(100 * time.Millisecond)
+	u, exists = repo.Get("testID")
+	assert.True(t, exists, "URL should still exist")
+	assert.True(t, u.DeletedFlag, "URL should be marked as deleted")
 }
 
 func TestBatchShorten(t *testing.T) {
@@ -230,7 +280,7 @@ func TestBatchShorten(t *testing.T) {
 				id := svc.ExtractIDFromShortURL(r.ShortURL)
 				originalURL, exists := repo.Get(id)
 				assert.True(t, exists)
-				assert.Equal(t, tt.reqs[i].OriginalURL, originalURL)
+				assert.Equal(t, tt.reqs[i].OriginalURL, originalURL.OriginalURL)
 			}
 		})
 	}

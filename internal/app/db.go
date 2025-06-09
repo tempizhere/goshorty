@@ -50,6 +50,13 @@ func NewDB(dsn string) (repository.Database, error) {
 			return nil, err
 		}
 
+		// Добавляем столбец is_deleted, если он не существует
+		_, err = conn.Exec("ALTER TABLE urls ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE")
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+
 		// Проверяем наличие уникального индекса на original_url
 		var indexExists bool
 		err = conn.QueryRow(`

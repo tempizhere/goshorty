@@ -13,6 +13,7 @@ import (
 	"github.com/tempizhere/goshorty/internal/models"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
+	"go.uber.org/zap"
 )
 
 // Создаём структуры для JSON
@@ -30,21 +31,28 @@ type ExpandResponse struct {
 
 // App содержит хендлеры и зависимости
 type App struct {
-	svc *service.Service
-	db  repository.Database
+	svc    *service.Service
+	db     repository.Database
+	logger *zap.Logger
 }
 
-// NewService создаёт новое приложение
-func NewApp(svc *service.Service, db repository.Database) *App {
-	return &App{svc: svc, db: db}
+// NewApp создаёт новый экземпляр App
+func NewApp(svc *service.Service, db repository.Database, logger *zap.Logger) *App {
+	return &App{
+		svc:    svc,
+		db:     db,
+		logger: logger,
+	}
 }
 
-// CreateShortURL создаёт короткий URL и возвращает его или ошибку
+// createShortURL создаёт короткий URL и возвращает его или ошибку
 func (a *App) createShortURL(originalURL string, userID string) (string, error) {
 	if originalURL == "" {
 		return "", errors.New("empty URL")
 	}
-
+	if _, err := url.ParseRequestURI(originalURL); err != nil {
+		return "", errors.New("invalid URL")
+	}
 	shortURL, err := a.svc.CreateShortURL(originalURL, userID)
 	return shortURL, err
 }
@@ -75,7 +83,8 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := a.createShortURL(string(body), userID)
+	originalURL := strings.TrimSpace(string(body))
+	shortURL, err := a.createShortURL(originalURL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
@@ -109,6 +118,11 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	}
 	originalURL, exists := a.svc.GetOriginalURL(id)
 	if !exists {
+		u, found := a.svc.Get(id)
+		if found && u.DeletedFlag {
+			http.Error(w, "URL is deleted", http.StatusGone)
+			return
+		}
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
 	}
@@ -270,15 +284,36 @@ func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := make([]models.ShortURLResponse, len(urls))
-	for i, u := range urls {
-		resp[i] = models.ShortURLResponse{
-			ShortURL:    strings.TrimRight(a.svc.GetBaseURL(), "/") + "/" + u.ShortID,
-			OriginalURL: u.OriginalURL,
-		}
+	a.writeJSONResponse(w, http.StatusOK, urls)
+}
+
+// HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
+func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
 	}
 
-	a.writeJSONResponse(w, http.StatusOK, resp)
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Вызываем асинхронное удаление через сервис
+	a.svc.BatchDeleteAsync(userID, ids)
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок
