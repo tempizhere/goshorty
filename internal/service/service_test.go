@@ -138,9 +138,20 @@ func TestService(t *testing.T) {
 	urls, err := svc.GetURLsByUserID(testUserID)
 	assert.NoError(t, err, "GetURLsByUserID should not return error")
 	assert.Len(t, urls, 2, "Should return two URLs for test user")
-	assert.Equal(t, "https://example.com", urls[0].OriginalURL, "First URL should match")
-	assert.Equal(t, "https://another.com", urls[1].OriginalURL, "Second URL should match")
-	assert.True(t, strings.HasPrefix(urls[0].ShortURL, "http://localhost:8080/"), "Short URL should start with baseURL")
+
+	// Проверяем, что URLs содержат ожидаемые значения в любом порядке
+	var foundExample, foundAnother bool
+	for _, u := range urls {
+		if u.OriginalURL == "https://example.com" {
+			foundExample = true
+			assert.True(t, strings.HasPrefix(u.ShortURL, "http://localhost:8080/"), "Short URL should start with baseURL")
+		}
+		if u.OriginalURL == "https://another.com" {
+			foundAnother = true
+		}
+	}
+	assert.True(t, foundExample, "Should contain https://example.com")
+	assert.True(t, foundAnother, "Should contain https://another.com")
 
 	// Тест 11: GetURLsByUserID для несуществующего пользователя
 	urls, err = svc.GetURLsByUserID("unknown_user")
