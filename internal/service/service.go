@@ -191,16 +191,6 @@ func (s *Service) Get(id string) (models.URL, bool) {
 	return s.repo.Get(id)
 }
 
-// ExtractIDFromShortURL извлекает ID из короткого URL
-func (s *Service) ExtractIDFromShortURL(shortURL string) string {
-	return shortURL[strings.LastIndex(shortURL, "/")+1:]
-}
-
-// GetBaseURL возвращает базовый URL сервиса
-func (s *Service) GetBaseURL() string {
-	return s.baseURL
-}
-
 // GetURLsByUserID возвращает все URL, связанные с пользователем
 func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, error) {
 	urls, err := s.repo.GetURLsByUserID(userID)

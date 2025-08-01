@@ -94,7 +94,7 @@ func TestService(t *testing.T) {
 	shortURL, err := svc.CreateShortURL("https://example.com", testUserID)
 	assert.NoError(t, err, "CreateShortURL should not return error")
 	assert.True(t, strings.HasPrefix(shortURL, "http://localhost:8080/"), "Short URL should start with baseURL")
-	id := svc.ExtractIDFromShortURL(shortURL)
+	id := shortURL[strings.LastIndex(shortURL, "/")+1:]
 	assert.Len(t, id, 8, "ID should be 8 characters long")
 
 	// Тест 2: CreateShortURL с дублирующимся URL
@@ -129,10 +129,6 @@ func TestService(t *testing.T) {
 	// Тест 8: GetOriginalURL для несуществующего ID
 	_, exists = svc.GetOriginalURL("unknown")
 	assert.False(t, exists, "URL should not exist")
-
-	// Тест 9: ExtractIDFromShortURL
-	extractedID := svc.ExtractIDFromShortURL("http://localhost:8080/abcdef12")
-	assert.Equal(t, "abcdef12", extractedID, "Extracted ID should match")
 
 	// Тест 10: GetURLsByUserID успех
 	urls, err := svc.GetURLsByUserID(testUserID)
@@ -277,7 +273,7 @@ func TestBatchShorten(t *testing.T) {
 				assert.Equal(t, tt.reqs[i].CorrelationID, r.CorrelationID)
 
 				// Проверяем, что URL сохранен в хранилище
-				id := svc.ExtractIDFromShortURL(r.ShortURL)
+				id := r.ShortURL[strings.LastIndex(r.ShortURL, "/")+1:]
 				originalURL, exists := repo.Get(id)
 				assert.True(t, exists)
 				assert.Equal(t, tt.reqs[i].OriginalURL, originalURL.OriginalURL)
