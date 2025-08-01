@@ -15,7 +15,7 @@ type MemoryRepository struct {
 // NewMemoryRepository создаёт новый экземпляр MemoryRepository
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
-		store: make(map[string]models.URL),
+		store: make(map[string]models.URL, 1000), // Предварительно выделяем память
 		mutex: sync.RWMutex{},
 	}
 }
@@ -84,7 +84,15 @@ func (r *MemoryRepository) GetURLsByUserID(userID string) ([]models.URL, error) 
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	var urls []models.URL
+	// Подсчитываем количество URL для пользователя
+	count := 0
+	for _, u := range r.store {
+		if u.UserID == userID {
+			count++
+		}
+	}
+
+	urls := make([]models.URL, 0, count)
 	for _, u := range r.store {
 		if u.UserID == userID {
 			urls = append(urls, u)
