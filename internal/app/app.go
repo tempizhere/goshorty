@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/middleware"
@@ -316,16 +317,34 @@ func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// Пул буферов для JSON кодирования
+var jsonBufferPool = sync.Pool{
+	New: func() interface{} {
+		return new(strings.Builder)
+	},
+}
+
 // writeJSONResponse пишет JSON-ответ с проверкой ошибок
 func (a *App) writeJSONResponse(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	data, err := json.Marshal(v)
-	if err != nil {
+
+	// Используем пул буферов для уменьшения аллокаций
+	buf := jsonBufferPool.Get().(*strings.Builder)
+	buf.Reset()
+	defer jsonBufferPool.Put(buf)
+
+	encoder := json.NewEncoder(buf)
+	encoder.SetIndent("", "")
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
 		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 		return
 	}
-	if _, err := w.Write(data); err != nil {
+
+	// Убираем перенос строки, который добавляет json.Encoder
+	jsonStr := strings.TrimSpace(buf.String())
+	if _, err := w.Write([]byte(jsonStr)); err != nil {
 		http.Error(w, "Failed to write response", http.StatusInternalServerError)
 		return
 	}

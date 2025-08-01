@@ -103,6 +103,7 @@ func (s *Service) CreateShortURLWithID(originalURL, id, userID string) (string, 
 		}
 		return "", err
 	}
+	// Используем простое конкатенацию вместо strings.Builder для коротких строк
 	return strings.TrimRight(s.baseURL, "/") + "/" + shortID, nil
 }
 
@@ -135,10 +136,14 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 	if len(reqs) == 0 {
 		return nil, ErrEmptyBatch
 	}
-	urls := make(map[string]string)
-	resp := make([]models.BatchResponse, len(reqs))
-	corrIDs := make(map[string]struct{})
-	for i, req := range reqs {
+	urls := make(map[string]string, len(reqs))
+	resp := make([]models.BatchResponse, 0, len(reqs))
+	corrIDs := make(map[string]struct{}, len(reqs))
+
+	// Предварительно вычисляем базовый URL
+	baseURL := strings.TrimRight(s.baseURL, "/")
+
+	for _, req := range reqs {
 		if _, exists := corrIDs[req.CorrelationID]; exists {
 			return nil, ErrDuplicateCorrID
 		}
@@ -156,17 +161,18 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 			}
 			if _, exists := s.repo.Get(id); !exists {
 				urls[id] = req.OriginalURL
-				shortURL = strings.Join([]string{strings.TrimRight(s.baseURL, "/"), id}, "/")
+				// Используем простое конкатенацию вместо strings.Builder для коротких строк
+				shortURL = baseURL + "/" + id
 				break
 			}
 			if j == 4 {
 				return nil, ErrUniqueIDFailed
 			}
 		}
-		resp[i] = models.BatchResponse{
+		resp = append(resp, models.BatchResponse{
 			CorrelationID: req.CorrelationID,
 			ShortURL:      shortURL,
-		}
+		})
 	}
 	if err := s.repo.BatchSave(urls, userID); err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
@@ -191,28 +197,24 @@ func (s *Service) Get(id string) (models.URL, bool) {
 	return s.repo.Get(id)
 }
 
-// ExtractIDFromShortURL извлекает ID из короткого URL
-func (s *Service) ExtractIDFromShortURL(shortURL string) string {
-	return shortURL[strings.LastIndex(shortURL, "/")+1:]
-}
-
-// GetBaseURL возвращает базовый URL сервиса
-func (s *Service) GetBaseURL() string {
-	return s.baseURL
-}
-
 // GetURLsByUserID возвращает все URL, связанные с пользователем
 func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, error) {
 	urls, err := s.repo.GetURLsByUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	resp := make([]models.ShortURLResponse, len(urls))
-	for i, u := range urls {
-		resp[i] = models.ShortURLResponse{
-			ShortURL:    strings.TrimRight(s.baseURL, "/") + "/" + u.ShortID,
+	resp := make([]models.ShortURLResponse, 0, len(urls))
+
+	// Предварительно вычисляем базовый URL
+	baseURL := strings.TrimRight(s.baseURL, "/")
+
+	for _, u := range urls {
+		// Используем простое конкатенацию вместо strings.Builder для коротких строк
+		shortURL := baseURL + "/" + u.ShortID
+		resp = append(resp, models.ShortURLResponse{
+			ShortURL:    shortURL,
 			OriginalURL: u.OriginalURL,
-		}
+		})
 	}
 	return resp, nil
 }
