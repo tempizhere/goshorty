@@ -43,11 +43,13 @@ type gzipResponseWriter struct {
 	isGzipValid bool
 }
 
+// WriteHeader устанавливает HTTP-статус код ответа
 func (w *gzipResponseWriter) WriteHeader(statusCode int) {
 	// Вызываем оригинальный WriteHeader
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+// Write записывает данные в ответ с автоматическим сжатием при необходимости
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	// Проверяем Content-Type ответа
 	contentType := w.Header().Get("Content-Type")

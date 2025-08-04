@@ -12,24 +12,35 @@ import (
 	"github.com/tempizhere/goshorty/internal/repository"
 )
 
-var (
-	ErrEmptyURL        = errors.New("empty URL")
-	ErrEmptyID         = errors.New("empty ID")
-	ErrIDAlreadyExists = errors.New("ID already exists")
-	ErrEmptyBatch      = errors.New("empty batch")
-	ErrDuplicateCorrID = errors.New("duplicate correlation_id")
-	ErrUniqueIDFailed  = errors.New("failed to generate unique ID")
-	ErrInvalidToken    = errors.New("invalid token")
-)
+// ErrEmptyURL возвращается при попытке создать короткий URL из пустой строки
+var ErrEmptyURL = errors.New("empty URL")
 
-// Service реализует логику работы с короткими URL
+// ErrEmptyID возвращается при попытке создать URL с пустым ID
+var ErrEmptyID = errors.New("empty ID")
+
+// ErrIDAlreadyExists возвращается при попытке создать URL с уже существующим ID
+var ErrIDAlreadyExists = errors.New("ID already exists")
+
+// ErrEmptyBatch возвращается при попытке обработать пустой пакет запросов
+var ErrEmptyBatch = errors.New("empty batch")
+
+// ErrDuplicateCorrID возвращается при обнаружении дублирующихся correlation_id в пакете
+var ErrDuplicateCorrID = errors.New("duplicate correlation_id")
+
+// ErrUniqueIDFailed возвращается при неудачной попытке генерации уникального ID
+var ErrUniqueIDFailed = errors.New("failed to generate unique ID")
+
+// ErrInvalidToken возвращается при неверном или истёкшем JWT токене
+var ErrInvalidToken = errors.New("invalid token")
+
+// Service реализует бизнес-логику работы с короткими URL
 type Service struct {
-	repo      repository.Repository
-	baseURL   string
-	jwtSecret string
+	repo      repository.Repository // Репозиторий для работы с данными
+	baseURL   string                // Базовый URL для генерации коротких ссылок
+	jwtSecret string                // Секретный ключ для подписи JWT токенов
 }
 
-// NewService создаёт новый экземпляр сервиса
+// NewService создаёт новый экземпляр сервиса с указанным репозиторием, базовым URL и секретным ключом JWT
 func NewService(repo repository.Repository, baseURL, jwtSecret string) *Service {
 	return &Service{
 		repo:      repo,
@@ -38,7 +49,7 @@ func NewService(repo repository.Repository, baseURL, jwtSecret string) *Service 
 	}
 }
 
-// GenerateShortID генерирует короткий ID
+// GenerateShortID генерирует случайный короткий ID длиной 8 символов в base64url кодировке
 func (s *Service) GenerateShortID() (string, error) {
 	bytes := make([]byte, 8)
 	_, err := rand.Read(bytes)
@@ -49,12 +60,12 @@ func (s *Service) GenerateShortID() (string, error) {
 	return encoded[:8], nil
 }
 
-// GenerateUserID генерирует уникальный идентификатор пользователя
+// GenerateUserID генерирует уникальный идентификатор пользователя, используя тот же алгоритм, что и для коротких ID
 func (s *Service) GenerateUserID() (string, error) {
 	return s.GenerateShortID()
 }
 
-// GenerateJWT генерирует JWT с UserID
+// GenerateJWT генерирует JWT токен с указанным UserID и сроком действия 24 часа
 func (s *Service) GenerateJWT(userID string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
@@ -63,7 +74,7 @@ func (s *Service) GenerateJWT(userID string) (string, error) {
 	return token.SignedString([]byte(s.jwtSecret))
 }
 
-// ParseJWT проверяет и извлекает UserID из JWT
+// ParseJWT проверяет подпись JWT токена и извлекает UserID из payload
 func (s *Service) ParseJWT(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -85,7 +96,7 @@ func (s *Service) ParseJWT(tokenString string) (string, error) {
 	return userID, nil
 }
 
-// CreateShortURLWithID создаёт короткий URL с заданным ID
+// CreateShortURLWithID создаёт короткий URL с заданным ID для указанного пользователя
 func (s *Service) CreateShortURLWithID(originalURL, id, userID string) (string, error) {
 	if originalURL == "" {
 		return "", ErrEmptyURL
@@ -107,7 +118,7 @@ func (s *Service) CreateShortURLWithID(originalURL, id, userID string) (string, 
 	return strings.TrimRight(s.baseURL, "/") + "/" + shortID, nil
 }
 
-// CreateShortURL создаёт короткий URL
+// CreateShortURL создаёт короткий URL с автоматически сгенерированным ID для указанного пользователя
 func (s *Service) CreateShortURL(originalURL, userID string) (string, error) {
 	var id string
 	var err error
@@ -131,7 +142,7 @@ func (s *Service) CreateShortURL(originalURL, userID string) (string, error) {
 	return "", errors.New("failed to generate unique ID")
 }
 
-// BatchShorten создаёт короткие URL для списка запросов
+// BatchShorten создаёт короткие URL для списка запросов в пакетном режиме для указанного пользователя
 func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]models.BatchResponse, error) {
 	if len(reqs) == 0 {
 		return nil, ErrEmptyBatch
@@ -183,7 +194,7 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 	return resp, nil
 }
 
-// GetOriginalURL возвращает оригинальный URL по ID
+// GetOriginalURL возвращает оригинальный URL по короткому ID, учитывая флаг удаления
 func (s *Service) GetOriginalURL(id string) (string, bool) {
 	u, exists := s.repo.Get(id)
 	if !exists || u.DeletedFlag {
@@ -192,12 +203,12 @@ func (s *Service) GetOriginalURL(id string) (string, bool) {
 	return u.OriginalURL, true
 }
 
-// Get возвращает полную информацию об URL по ID
+// Get возвращает полную информацию об URL по короткому ID
 func (s *Service) Get(id string) (models.URL, bool) {
 	return s.repo.Get(id)
 }
 
-// GetURLsByUserID возвращает все URL, связанные с пользователем
+// GetURLsByUserID возвращает все URL, созданные указанным пользователем, в формате для API ответа
 func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, error) {
 	urls, err := s.repo.GetURLsByUserID(userID)
 	if err != nil {
@@ -219,12 +230,12 @@ func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, err
 	return resp, nil
 }
 
-// BatchDelete помечает указанные URL как удалённые
+// BatchDelete помечает указанные URL как удалённые для указанного пользователя
 func (s *Service) BatchDelete(userID string, ids []string) error {
 	return s.repo.BatchDelete(userID, ids)
 }
 
-// BatchDeleteAsync асинхронно помечает указанные URL как удалённые
+// BatchDeleteAsync асинхронно помечает указанные URL как удалённые для указанного пользователя
 func (s *Service) BatchDeleteAsync(userID string, ids []string) {
 	go func() {
 		s.BatchDelete(userID, ids)

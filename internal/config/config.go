@@ -7,16 +7,17 @@ import (
 	"strings"
 )
 
-// Config содержит настройки приложения
+// Config содержит настройки приложения для сервиса сокращения URL
 type Config struct {
-	RunAddr         string
-	BaseURL         string
-	FileStoragePath string
-	DatabaseDSN     string
-	JWTSecret       string
+	RunAddr         string // Адрес и порт для запуска сервера
+	BaseURL         string // Базовый URL для генерации коротких ссылок
+	FileStoragePath string // Путь к файлу для хранения URL
+	DatabaseDSN     string // Строка подключения к базе данных PostgreSQL
+	JWTSecret       string // Секретный ключ для подписи JWT токенов
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
+// Поддерживает настройку через переменные окружения и флаги командной строки
 func NewConfig() (*Config, error) {
 	cfg := &Config{
 		RunAddr:         ":8080",

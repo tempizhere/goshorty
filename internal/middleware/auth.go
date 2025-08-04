@@ -14,7 +14,8 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
-// AuthMiddleware создаёт middleware для аутентификации
+// AuthMiddleware создаёт middleware для аутентификации пользователей
+// Автоматически генерирует JWT токен для новых пользователей и проверяет существующие токены
 func AuthMiddleware(svc *service.Service, logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,7 @@ func AuthMiddleware(svc *service.Service, logger *zap.Logger) func(http.Handler)
 	}
 }
 
-// GetUserID извлекает UserID из контекста
+// GetUserID извлекает UserID из контекста HTTP запроса
 func GetUserID(r *http.Request) (string, bool) {
 	userID, ok := r.Context().Value(userIDKey).(string)
 	return userID, ok
