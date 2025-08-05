@@ -30,7 +30,10 @@ func ExampleMemoryRepository_Get() {
 	repo := repository.NewMemoryRepository()
 
 	// Сохраняем URL
-	repo.Save("abc123", "https://example.com/very-long-url", "user-123")
+	if _, err := repo.Save("abc123", "https://example.com/very-long-url", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
 
 	// Получаем URL
 	url, exists := repo.Get("abc123")
@@ -93,9 +96,18 @@ func ExampleMemoryRepository_GetURLsByUserID() {
 	repo := repository.NewMemoryRepository()
 
 	// Сохраняем URL для разных пользователей
-	repo.Save("abc123", "https://example.com/url1", "user-123")
-	repo.Save("def456", "https://example.com/url2", "user-123")
-	repo.Save("ghi789", "https://example.com/url3", "user-456")
+	if _, err := repo.Save("abc123", "https://example.com/url1", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
+	if _, err := repo.Save("def456", "https://example.com/url2", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
+	if _, err := repo.Save("ghi789", "https://example.com/url3", "user-456"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
 
 	// Получаем URL пользователя user-123
 	urls, err := repo.GetURLsByUserID("user-123")
@@ -125,9 +137,18 @@ func ExampleMemoryRepository_BatchDelete() {
 	repo := repository.NewMemoryRepository()
 
 	// Сохраняем URL
-	repo.Save("abc123", "https://example.com/url1", "user-123")
-	repo.Save("def456", "https://example.com/url2", "user-123")
-	repo.Save("ghi789", "https://example.com/url3", "user-123")
+	if _, err := repo.Save("abc123", "https://example.com/url1", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
+	if _, err := repo.Save("def456", "https://example.com/url2", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
+	if _, err := repo.Save("ghi789", "https://example.com/url3", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
 
 	// Удаляем URL
 	idsToDelete := []string{"abc123", "def456"}
@@ -159,8 +180,14 @@ func ExampleMemoryRepository_Clear() {
 	repo := repository.NewMemoryRepository()
 
 	// Сохраняем URL
-	repo.Save("abc123", "https://example.com/url1", "user-123")
-	repo.Save("def456", "https://example.com/url2", "user-123")
+	if _, err := repo.Save("abc123", "https://example.com/url1", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
+	if _, err := repo.Save("def456", "https://example.com/url2", "user-123"); err != nil {
+		fmt.Printf("Ошибка при сохранении URL: %v\n", err)
+		return
+	}
 
 	// Проверяем количество URL
 	_, exists1 := repo.Get("abc123")

@@ -53,12 +53,18 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 			if err != nil {
 				return nil, err
 			}
-			newFile.Close()
+			if err := newFile.Close(); err != nil {
+				return nil, err
+			}
 			return repo, nil
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			repo.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	// Читаем файл построчно
 	scanner := bufio.NewScanner(file)
@@ -122,7 +128,11 @@ func (r *FileRepository) Save(id, url, userID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			r.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	if _, err = file.Write(data); err != nil {
 		return "", err
@@ -146,7 +156,11 @@ func (r *FileRepository) Get(id string) (models.URL, bool) {
 		r.logger.Error("Failed to open file", zap.Error(err))
 		return models.URL{}, false
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			r.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	var record URLRecord
 	scanner := bufio.NewScanner(file)
@@ -173,10 +187,14 @@ func (r *FileRepository) Clear() {
 
 	r.store = make(map[string]string)
 	r.urlToShortID = make(map[string]string)
-	os.Remove(r.filePath)
+	if err := os.Remove(r.filePath); err != nil {
+		r.logger.Error("Failed to remove file", zap.Error(err))
+	}
 	newFile, err := os.Create(r.filePath)
 	if err == nil {
-		newFile.Close()
+		if err := newFile.Close(); err != nil {
+			r.logger.Error("Failed to close file", zap.Error(err))
+		}
 	}
 }
 
@@ -198,7 +216,11 @@ func (r *FileRepository) BatchSave(urls map[string]string, userID string) error 
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			r.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	for id, url := range urls {
 		record := URLRecord{
@@ -233,7 +255,11 @@ func (r *FileRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			r.logger.Error("Ошибка при закрытии файла", zap.Error(err))
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -270,7 +296,11 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 		}
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			r.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	var records []URLRecord
 	scanner := bufio.NewScanner(file)
@@ -298,7 +328,11 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 	if err != nil {
 		return err
 	}
-	defer tmpFile.Close()
+	defer func() {
+		if err := tmpFile.Close(); err != nil {
+			r.logger.Error("Failed to close temporary file", zap.Error(err))
+		}
+	}()
 
 	for _, record := range records {
 		data, err := json.Marshal(record)

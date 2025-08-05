@@ -24,7 +24,7 @@ func ExampleService_GenerateShortID() {
 	fmt.Printf("Длина ID: %d символов\n", len(id))
 	fmt.Printf("ID содержит только допустимые символы: %t\n", func() bool {
 		for _, char := range id {
-			if !((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '_' || char == '-') {
+			if (char < 'A' || char > 'Z') && (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '_' && char != '-' {
 				return false
 			}
 		}

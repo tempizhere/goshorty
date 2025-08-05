@@ -90,7 +90,10 @@ func ExampleApp_HandleJSONShorten() {
 	fmt.Printf("Статус код: %d\n", w.Code)
 
 	var response app.ShortenResponse
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		fmt.Printf("Failed to parse JSON: %v\n", err)
+		return
+	}
 	fmt.Printf("URL содержит базовый адрес: %t\n", strings.HasPrefix(response.Result, "http://localhost:8080/"))
 	fmt.Printf("ID имеет правильную длину: %t\n", len(response.Result)-len("http://localhost:8080/") == 8)
 
@@ -173,7 +176,10 @@ func ExampleApp_HandleJSONExpand() {
 	fmt.Printf("Статус код: %d\n", w.Code)
 
 	var response app.ExpandResponse
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		fmt.Printf("Failed to parse JSON: %v\n", err)
+		return
+	}
 	fmt.Printf("Оригинальный URL: %s\n", response.URL)
 
 	// Output:
@@ -224,7 +230,10 @@ func ExampleApp_HandleBatchShorten() {
 	fmt.Printf("Статус код: %d\n", w.Code)
 
 	var responses []models.BatchResponse
-	json.Unmarshal(w.Body.Bytes(), &responses)
+	if err := json.Unmarshal(w.Body.Bytes(), &responses); err != nil {
+		fmt.Printf("Ошибка при разборе JSON: %v\n", err)
+		return
+	}
 	fmt.Printf("Обработано запросов: %d\n", len(responses))
 	fmt.Printf("Все URL содержат базовый адрес: %t\n", func() bool {
 		for _, resp := range responses {
@@ -252,8 +261,14 @@ func ExampleApp_HandleUserURLs() {
 	// Создаём несколько URL для пользователя
 	// Используем тот же userID, который генерирует middleware
 	userID, _ := svc.GenerateUserID()
-	svc.CreateShortURL("https://example.com/url1", userID)
-	svc.CreateShortURL("https://example.com/url2", userID)
+	if _, err := svc.CreateShortURL("https://example.com/url1", userID); err != nil {
+		fmt.Printf("Ошибка при создании URL: %v\n", err)
+		return
+	}
+	if _, err := svc.CreateShortURL("https://example.com/url2", userID); err != nil {
+		fmt.Printf("Ошибка при создании URL: %v\n", err)
+		return
+	}
 
 	// Создаём HTTP запрос
 	req := httptest.NewRequest("GET", "/api/user/urls", nil)
@@ -275,7 +290,10 @@ func ExampleApp_HandleUserURLs() {
 	fmt.Printf("Статус код: %d\n", w.Code)
 
 	var responses []models.ShortURLResponse
-	json.Unmarshal(w.Body.Bytes(), &responses)
+	if err := json.Unmarshal(w.Body.Bytes(), &responses); err != nil {
+		fmt.Printf("Ошибка при разборе JSON: %v\n", err)
+		return
+	}
 	fmt.Printf("URL пользователя: %d\n", len(responses))
 	if len(responses) > 0 {
 		fmt.Printf("Первый URL содержит базовый адрес: %t\n", strings.HasPrefix(responses[0].ShortURL, "http://localhost:8080/"))

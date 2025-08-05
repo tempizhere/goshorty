@@ -18,7 +18,9 @@ func TestLoggingMiddleware(t *testing.T) {
 		handlerCalled = true
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		if _, err := w.Write([]byte("test response")); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("GET", "/test", nil)
@@ -38,7 +40,9 @@ func TestLoggingMiddleware_DifferentMethods(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response"))
+		if _, err := w.Write([]byte("response")); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
@@ -66,7 +70,9 @@ func TestLoggingMiddleware_DifferentStatusCodes(t *testing.T) {
 		t.Run("Status"+string(rune(statusCode)), func(t *testing.T) {
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(statusCode)
-				w.Write([]byte("response"))
+				if _, err := w.Write([]byte("response")); err != nil {
+					t.Logf("Ошибка при записи в response: %v", err)
+				}
 			})
 
 			req := httptest.NewRequest("GET", "/test", nil)

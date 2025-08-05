@@ -18,7 +18,9 @@ func TestGzipMiddleware_NoCompression(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("test response"))
+		if _, err := w.Write([]byte("test response")); err != nil {
+			t.Logf("Failed to write to response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -41,7 +43,9 @@ func TestGzipMiddleware_WithCompression(t *testing.T) {
 		handlerCalled = true
 		w.Header().Set("Content-Type", "application/json")
 		largeResponse := strings.Repeat("test data ", 200) // ~2000 байт
-		w.Write([]byte(largeResponse))
+		if _, err := w.Write([]byte(largeResponse)); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -66,7 +70,9 @@ func TestGzipMiddleware_SmallResponse(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("small"))
+		if _, err := w.Write([]byte("small")); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -90,7 +96,9 @@ func TestGzipMiddleware_UnsupportedContentType(t *testing.T) {
 		handlerCalled = true
 		w.Header().Set("Content-Type", "image/png")
 		largeResponse := strings.Repeat("test data ", 200)
-		w.Write([]byte(largeResponse))
+		if _, err := w.Write([]byte(largeResponse)); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -110,8 +118,12 @@ func TestGzipMiddleware_GzipRequest(t *testing.T) {
 
 	var buf strings.Builder
 	gw := gzip.NewWriter(&buf)
-	gw.Write([]byte("compressed data"))
-	gw.Close()
+	if _, err := gw.Write([]byte("compressed data")); err != nil {
+		t.Logf("Ошибка при записи в gzip writer: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Logf("Ошибка при закрытии gzip writer: %v", err)
+	}
 	compressedData := buf.String()
 
 	handlerCalled := false
@@ -120,7 +132,9 @@ func TestGzipMiddleware_GzipRequest(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, "compressed data", string(body))
-		w.Write([]byte("response"))
+		if _, err := w.Write([]byte("response")); err != nil {
+			t.Logf("Ошибка при записи в response: %v", err)
+		}
 	})
 
 	req := httptest.NewRequest("POST", "/", strings.NewReader(compressedData))

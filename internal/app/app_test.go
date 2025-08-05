@@ -49,7 +49,7 @@ func setupTestEnvironment(t *testing.T) (*config.Config, repository.Repository, 
 	assert.NoError(t, err, "Failed to create temp file")
 
 	cleanup := func() {
-		os.Remove(tempFile.Name())
+		_ = os.Remove(tempFile.Name())
 	}
 
 	cfg := &config.Config{
@@ -362,21 +362,8 @@ func TestHandleJSONShorten(t *testing.T) {
 
 // TestHandleGzipRequests тестирует обработку запросов с Gzip сжатием
 func TestHandleGzipRequests(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "test_storage_*.json")
-	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
-
-	cfg := &config.Config{
-		RunAddr:         ":8080",
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: tempFile.Name(),
-		JWTSecret:       "test-secret",
-	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
-	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	logger := zap.NewNop()
-	appInstance := NewApp(svc, nil, logger)
+	cfg, repo, svc, appInstance, logger, cleanup := setupTestEnvironment(t)
+	defer cleanup()
 
 	tests := []struct {
 		name           string
@@ -468,21 +455,8 @@ func TestHandleGzipRequests(t *testing.T) {
 
 // TestHandleGzipResponses тестирует обработку ответов с Gzip сжатием
 func TestHandleGzipResponses(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "test_storage_*.json")
-	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
-
-	cfg := &config.Config{
-		RunAddr:         ":8080",
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: tempFile.Name(),
-		JWTSecret:       "test-secret",
-	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
-	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	logger := zap.NewNop()
-	appInstance := NewApp(svc, nil, logger)
+	cfg, repo, svc, appInstance, logger, cleanup := setupTestEnvironment(t)
+	defer cleanup()
 
 	tests := []struct {
 		name            string
@@ -642,7 +616,11 @@ func TestHandleGzipResponses(t *testing.T) {
 				assert.Equal(t, "gzip", rr.Header().Get("Content-Encoding"), "Expected gzip Content-Encoding")
 				gz, err := gzip.NewReader(bytes.NewReader(responseBody))
 				assert.NoError(t, err, "Failed to create gzip reader")
-				defer gz.Close()
+				defer func() {
+					if err := gz.Close(); err != nil {
+						t.Logf("Failed to close gzip reader: %v", err)
+					}
+				}()
 				decompressed, err := io.ReadAll(gz)
 				assert.NoError(t, err, "Failed to decompress response")
 				responseString = string(decompressed)
@@ -674,21 +652,8 @@ func TestHandleGzipResponses(t *testing.T) {
 
 // TestHandleGetURL тестирует обработку GET запросов для получения оригинальных URL
 func TestHandleGetURL(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "test_storage_*.json")
-	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
-
-	// Создаём зависимости
-	cfg := &config.Config{
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: tempFile.Name(),
-		JWTSecret:       "test-secret",
-	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
-	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	logger := zap.NewNop()
-	appInstance := NewApp(svc, nil, logger)
+	_, repo, _, appInstance, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
 
 	tests := []struct {
 		name         string
@@ -759,7 +724,11 @@ func TestHandleGetURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to send request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			// Читаем тело ответа
 			body, err := io.ReadAll(resp.Body)
@@ -781,21 +750,8 @@ func TestHandleGetURL(t *testing.T) {
 
 // TestHandleJSONExpand тестирует обработку JSON запросов для получения оригинальных URL
 func TestHandleJSONExpand(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "test_storage_*.json")
-	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
-
-	// Создаём зависимости
-	cfg := &config.Config{
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: tempFile.Name(),
-		JWTSecret:       "test-secret",
-	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
-	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	logger := zap.NewNop()
-	appInstance := NewApp(svc, nil, logger)
+	_, repo, _, appInstance, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
 
 	tests := []struct {
 		name         string
@@ -847,7 +803,11 @@ func TestHandleJSONExpand(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to send request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("Failed to read response body: %v", err)
@@ -1081,21 +1041,8 @@ func TestHandleBatchShortenValidation(t *testing.T) {
 
 // TestHandleBatchShortenGzip тестирует обработку пакетных запросов с Gzip сжатием
 func TestHandleBatchShortenGzip(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "test_storage_*.json")
-	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
-
-	cfg := &config.Config{
-		RunAddr:         ":8080",
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: tempFile.Name(),
-		JWTSecret:       "test-secret",
-	}
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath, zap.NewNop())
-	assert.NoError(t, err, "Failed to create file repository")
-	svc := service.NewService(repo, cfg.BaseURL, cfg.JWTSecret)
-	logger := zap.NewNop()
-	appInstance := NewApp(svc, nil, logger)
+	cfg, repo, svc, appInstance, logger, cleanup := setupTestEnvironment(t)
+	defer cleanup()
 
 	// Очищаем хранилище
 	repo.Clear()
@@ -1141,7 +1088,11 @@ func TestHandleBatchShortenGzip(t *testing.T) {
 func TestHandleBatchDeleteURLsSuccess(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "test_storage_*.json")
 	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
+	defer func() {
+		if err := os.Remove(tempFile.Name()); err != nil {
+			t.Logf("Failed to remove temporary file: %v", err)
+		}
+	}()
 
 	cfg := &config.Config{
 		BaseURL:         "http://localhost:8080",
@@ -1179,7 +1130,11 @@ func TestHandleBatchDeleteURLsSuccess(t *testing.T) {
 func TestHandleBatchDeleteURLsValidation(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "test_storage_*.json")
 	assert.NoError(t, err, "Failed to create temp file")
-	defer os.Remove(tempFile.Name())
+	defer func() {
+		if err := os.Remove(tempFile.Name()); err != nil {
+			t.Logf("Failed to remove temporary file: %v", err)
+		}
+	}()
 
 	cfg := &config.Config{
 		BaseURL:         "http://localhost:8080",
