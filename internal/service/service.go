@@ -153,6 +153,7 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 
 	// Предварительно вычисляем базовый URL
 	baseURL := strings.TrimRight(s.baseURL, "/")
+	baseURLLen := len(baseURL)
 
 	for _, req := range reqs {
 		if _, exists := corrIDs[req.CorrelationID]; exists {
@@ -164,7 +165,6 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 		}
 		var id string
 		var err error
-		var shortURL string
 		for j := 0; j < 5; j++ {
 			id, err = s.GenerateShortID()
 			if err != nil {
@@ -172,18 +172,21 @@ func (s *Service) BatchShorten(reqs []models.BatchRequest, userID string) ([]mod
 			}
 			if _, exists := s.repo.Get(id); !exists {
 				urls[id] = req.OriginalURL
-				// Используем простое конкатенацию вместо strings.Builder для коротких строк
-				shortURL = baseURL + "/" + id
+				// Формирование URL с использованием append для экономии памяти
+				shortURL := make([]byte, 0, baseURLLen+9) // baseURL + "/" + 8-char id
+				shortURL = append(shortURL, baseURL...)
+				shortURL = append(shortURL, '/')
+				shortURL = append(shortURL, id...)
+				resp = append(resp, models.BatchResponse{
+					CorrelationID: req.CorrelationID,
+					ShortURL:      string(shortURL),
+				})
 				break
 			}
 			if j == 4 {
 				return nil, ErrUniqueIDFailed
 			}
 		}
-		resp = append(resp, models.BatchResponse{
-			CorrelationID: req.CorrelationID,
-			ShortURL:      shortURL,
-		})
 	}
 	if err := s.repo.BatchSave(urls, userID); err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
@@ -218,12 +221,16 @@ func (s *Service) GetURLsByUserID(userID string) ([]models.ShortURLResponse, err
 
 	// Предварительно вычисляем базовый URL
 	baseURL := strings.TrimRight(s.baseURL, "/")
+	baseURLLen := len(baseURL)
 
 	for _, u := range urls {
-		// Используем простое конкатенацию вместо strings.Builder для коротких строк
-		shortURL := baseURL + "/" + u.ShortID
+		// Формирование URL с использованием append для экономии памяти
+		shortURL := make([]byte, 0, baseURLLen+len(u.ShortID)+1)
+		shortURL = append(shortURL, baseURL...)
+		shortURL = append(shortURL, '/')
+		shortURL = append(shortURL, u.ShortID...)
 		resp = append(resp, models.ShortURLResponse{
-			ShortURL:    shortURL,
+			ShortURL:    string(shortURL),
 			OriginalURL: u.OriginalURL,
 		})
 	}
