@@ -270,8 +270,15 @@ func ExampleApp_HandleUserURLs() {
 		return
 	}
 
-	// Создаём HTTP запрос
+	// Создаём JWT токен для пользователя
+	token, _ := svc.GenerateJWT(userID)
+
+	// Создаём HTTP запрос с JWT токеном
 	req := httptest.NewRequest("GET", "/api/user/urls", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "jwt",
+		Value: token,
+	})
 
 	// Создаём response recorder
 	w := httptest.NewRecorder()
@@ -302,9 +309,9 @@ func ExampleApp_HandleUserURLs() {
 	}
 
 	// Output:
-	// Статус код: 204
-	// URL пользователя: 0
-	// Нет URL для пользователя
+	// Статус код: 200
+	// URL пользователя: 2
+	// Первый URL содержит базовый адрес: true
 }
 
 // ExampleApp_HandleBatchDeleteURLs демонстрирует обработку DELETE запроса для пакетного удаления URL

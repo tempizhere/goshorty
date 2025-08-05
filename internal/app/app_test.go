@@ -595,9 +595,15 @@ func TestHandleGzipResponses(t *testing.T) {
 						http.Error(w, "Failed to write response", http.StatusInternalServerError)
 					}
 				})
+				r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+					appInstance.HandlePostURL(w, r)
+				})
 			} else {
 				r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
 					appInstance.HandleJSONShorten(w, r)
+				})
+				r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+					appInstance.HandlePostURL(w, r)
 				})
 			}
 
@@ -633,16 +639,24 @@ func TestHandleGzipResponses(t *testing.T) {
 			}
 			if tt.expectedStored {
 				// Извлекаем ID из shortURL
-				var resp struct {
-					Result string `json:"result"`
-					Filler string `json:"filler,omitempty"`
-				}
-				err := json.Unmarshal([]byte(responseString), &resp)
-				assert.NoError(t, err, "Failed to unmarshal JSON response")
-				id := resp.Result[strings.LastIndex(resp.Result, "/")+1:]
-				_, exists := repo.Get(id)
-				assert.True(t, exists, "Expected URL to be stored")
-				if tt.expectedCode != http.StatusConflict {
+				if tt.contentType == "application/json" {
+					var resp struct {
+						Result string `json:"result"`
+						Filler string `json:"filler,omitempty"`
+					}
+					err := json.Unmarshal([]byte(responseString), &resp)
+					assert.NoError(t, err, "Failed to unmarshal JSON response")
+					id := resp.Result[strings.LastIndex(resp.Result, "/")+1:]
+					_, exists := repo.Get(id)
+					assert.True(t, exists, "Expected URL to be stored")
+					if tt.expectedCode != http.StatusConflict {
+						assert.Contains(t, responseString, cfg.BaseURL, "Expected short URL to contain BaseURL")
+					}
+				} else {
+					// Для text/plain ответа извлекаем ID напрямую
+					id := responseString[strings.LastIndex(responseString, "/")+1:]
+					_, exists := repo.Get(id)
+					assert.True(t, exists, "Expected URL to be stored")
 					assert.Contains(t, responseString, cfg.BaseURL, "Expected short URL to contain BaseURL")
 				}
 			}
