@@ -17,7 +17,11 @@ func GzipMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "Invalid gzip data", http.StatusBadRequest)
 				return
 			}
-			defer gz.Close()
+			defer func() {
+				if err := gz.Close(); err != nil {
+					_ = err
+				}
+			}()
 			r.Body = io.NopCloser(gz)
 		}
 
@@ -29,7 +33,11 @@ func GzipMiddleware(next http.Handler) http.Handler {
 
 		// Создаём кастомный ResponseWriter для сжатия ответа
 		gw := &gzipResponseWriter{ResponseWriter: w}
-		defer gw.Close()
+		defer func() {
+			if err := gw.Close(); err != nil {
+				_ = err
+			}
+		}()
 
 		// Передаём управление следующему обработчику
 		next.ServeHTTP(gw, r)
@@ -43,11 +51,13 @@ type gzipResponseWriter struct {
 	isGzipValid bool
 }
 
+// WriteHeader устанавливает HTTP-статус код ответа
 func (w *gzipResponseWriter) WriteHeader(statusCode int) {
 	// Вызываем оригинальный WriteHeader
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+// Write записывает данные в ответ с автоматическим сжатием при необходимости
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	// Проверяем Content-Type ответа
 	contentType := w.Header().Get("Content-Type")

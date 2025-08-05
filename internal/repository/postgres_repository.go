@@ -153,14 +153,18 @@ func (r *PostgresRepository) BatchSave(urls map[string]string, userID string) er
 				zap.String("short_id", id),
 				zap.String("original_url", url),
 				zap.Error(err))
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				r.logger.Error("Failed to rollback transaction", zap.Error(rollbackErr))
+			}
 			return err
 		}
 		if shortID != id {
 			r.logger.Info("URL already exists in transaction",
 				zap.String("original_url", url),
 				zap.String("existing_short_id", shortID))
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				r.logger.Error("Failed to rollback transaction", zap.Error(rollbackErr))
+			}
 			return ErrURLExists
 		}
 	}
@@ -178,7 +182,11 @@ func (r *PostgresRepository) GetURLsByUserID(userID string) ([]models.URL, error
 		r.logger.Error("Failed to query URLs by user_id", zap.String("user_id", userID), zap.Error(err))
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			r.logger.Error("Failed to close rows", zap.Error(err))
+		}
+	}()
 
 	var urls []models.URL
 	for rows.Next() {
