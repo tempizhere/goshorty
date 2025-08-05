@@ -18,26 +18,29 @@ import (
 )
 
 // Создаём структуры для JSON
+// ShortenRequest представляет запрос на сокращение URL в JSON формате
 type ShortenRequest struct {
-	URL string `json:"url"`
+	URL string `json:"url"` // Оригинальный URL для сокращения
 }
 
+// ShortenResponse представляет ответ с сокращённым URL в JSON формате
 type ShortenResponse struct {
-	Result string `json:"result"`
+	Result string `json:"result"` // Сокращённый URL
 }
 
+// ExpandResponse представляет ответ с оригинальным URL в JSON формате
 type ExpandResponse struct {
-	URL string `json:"url"`
+	URL string `json:"url"` // Оригинальный URL
 }
 
-// App содержит хендлеры и зависимости
+// App содержит HTTP хендлеры и зависимости для обработки запросов к сервису сокращения URL
 type App struct {
-	svc    *service.Service
-	db     repository.Database
-	logger *zap.Logger
+	svc    *service.Service    // Сервис для бизнес-логики
+	db     repository.Database // Интерфейс для работы с базой данных
+	logger *zap.Logger         // Логгер для записи событий
 }
 
-// NewApp создаёт новый экземпляр App
+// NewApp создаёт новый экземпляр App с указанными зависимостями
 func NewApp(svc *service.Service, db repository.Database, logger *zap.Logger) *App {
 	return &App{
 		svc:    svc,
@@ -58,7 +61,7 @@ func (a *App) createShortURL(originalURL string, userID string) (string, error) 
 	return shortURL, err
 }
 
-// HandlePostURL обрабатывает POST-запросы на "/"
+// HandlePostURL обрабатывает POST-запросы на "/" для сокращения URL через plain text
 func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -106,7 +109,7 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleGetURL обрабатывает GET-запросы на "/{id}"
+// HandleGetURL обрабатывает GET-запросы на "/{id}" для получения оригинального URL по короткому ID
 func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -131,7 +134,7 @@ func (a *App) HandleGetURL(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-// HandleJSONShorten обрабатывает POST-запросы на "/api/shorten"
+// HandleJSONShorten обрабатывает POST-запросы на "/api/shorten" для сокращения URL через JSON API
 func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -176,7 +179,7 @@ func (a *App) HandleJSONShorten(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusCreated, respBody)
 }
 
-// HandleJSONExpand обрабатывает GET-запросы на "/api/expand/{id}"
+// HandleJSONExpand обрабатывает GET-запросы на "/api/expand/{id}" для получения оригинального URL через JSON API
 func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -196,7 +199,7 @@ func (a *App) HandleJSONExpand(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusOK, respBody)
 }
 
-// HandlePing обрабатывает GET-запросы на "/ping"
+// HandlePing обрабатывает GET-запросы на "/ping" для проверки соединения с базой данных
 func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -213,7 +216,7 @@ func (a *App) HandlePing(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// HandleBatchShorten обрабатывает POST-запросы на "/api/shorten/batch"
+// HandleBatchShorten обрабатывает POST-запросы на "/api/shorten/batch" для пакетного сокращения URL
 func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -261,7 +264,7 @@ func (a *App) HandleBatchShorten(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusCreated, respBody)
 }
 
-// HandleUserURLs обрабатывает GET-запросы на "/api/user/urls"
+// HandleUserURLs обрабатывает GET-запросы на "/api/user/urls" для получения всех URL пользователя
 func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)
@@ -288,7 +291,7 @@ func (a *App) HandleUserURLs(w http.ResponseWriter, r *http.Request) {
 	a.writeJSONResponse(w, http.StatusOK, urls)
 }
 
-// HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
+// HandleBatchDeleteURLs обрабатывает DELETE-запросы на "/api/user/urls" для пакетного удаления URL пользователя
 func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusBadRequest)

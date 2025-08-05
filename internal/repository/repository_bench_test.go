@@ -30,7 +30,9 @@ func BenchmarkMemoryRepository_Get(b *testing.B) {
 	// Подготавливаем данные
 	id := "test-id"
 	url := "https://example.com/test-url"
-	repo.Save(id, url, "test-user")
+	if _, err := repo.Save(id, url, "test-user"); err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -69,7 +71,9 @@ func BenchmarkMemoryRepository_GetURLsByUserID(b *testing.B) {
 	for i := 0; i < 10; i++ {
 		id := "user-id-" + strconv.Itoa(i)
 		url := "https://example.com/user/" + strconv.Itoa(i)
-		repo.Save(id, url, userID)
+		if _, err := repo.Save(id, url, userID); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	b.ResetTimer()
@@ -91,7 +95,9 @@ func BenchmarkMemoryRepository_BatchDelete(b *testing.B) {
 	for i := 0; i < 5; i++ {
 		id := "delete-id-" + strconv.Itoa(i)
 		url := "https://example.com/delete/" + strconv.Itoa(i)
-		repo.Save(id, url, userID)
+		if _, err := repo.Save(id, url, userID); err != nil {
+			b.Fatal(err)
+		}
 		ids = append(ids, id)
 	}
 
@@ -136,7 +142,9 @@ func BenchmarkFileRepository_Get(b *testing.B) {
 	// Подготавливаем данные
 	id := "file-test-id"
 	url := "https://example.com/file-test-url"
-	repo.Save(id, url, "test-user")
+	if _, err := repo.Save(id, url, "test-user"); err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -198,7 +206,9 @@ func BenchmarkConcurrentMemoryRepository_Get(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		id := "concurrent-get-id-" + strconv.Itoa(i)
 		url := "https://example.com/concurrent-get/" + strconv.Itoa(i)
-		repo.Save(id, url, "test-user")
+		if _, err := repo.Save(id, url, "test-user"); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	b.ResetTimer()
@@ -223,7 +233,9 @@ func BenchmarkMemoryRepository_LargeDataset(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		id := "large-id-" + strconv.Itoa(i)
 		url := "https://example.com/large/" + strconv.Itoa(i)
-		repo.Save(id, url, "test-user")
+		if _, err := repo.Save(id, url, "test-user"); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	b.ResetTimer()

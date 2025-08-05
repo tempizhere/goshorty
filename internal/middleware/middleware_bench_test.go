@@ -35,7 +35,9 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 func BenchmarkGzipMiddleware(b *testing.B) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("test response data"))
+		if _, err := w.Write([]byte("test response data")); err != nil {
+			b.Logf("Failed to write to response: %v", err)
+		}
 	})
 
 	b.ResetTimer()
@@ -52,7 +54,9 @@ func BenchmarkGzipMiddleware(b *testing.B) {
 func BenchmarkGzipMiddlewareWithoutCompression(b *testing.B) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("test response data"))
+		if _, err := w.Write([]byte("test response data")); err != nil {
+			b.Logf("Failed to write to response: %v", err)
+		}
 	})
 
 	b.ResetTimer()
@@ -87,7 +91,9 @@ func BenchmarkConcurrentLoggingMiddleware(b *testing.B) {
 func BenchmarkConcurrentGzipMiddleware(b *testing.B) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("test response data"))
+		if _, err := w.Write([]byte("test response data")); err != nil {
+			b.Logf("Failed to write to response: %v", err)
+		}
 	})
 
 	b.ResetTimer()
@@ -111,7 +117,9 @@ func BenchmarkLargeResponseGzipMiddleware(b *testing.B) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write(largeResponse)
+		if _, err := w.Write(largeResponse); err != nil {
+			b.Logf("Failed to write to response: %v", err)
+		}
 	})
 
 	b.ResetTimer()

@@ -89,20 +89,34 @@ func TestConfig_EnvironmentVariables(t *testing.T) {
 
 	defer func() {
 		for env, val := range originalEnv {
-			os.Setenv(env, val)
+			if err := os.Setenv(env, val); err != nil {
+				t.Logf("Ошибка при установке переменной окружения %s: %v", env, err)
+			}
 		}
 		for _, env := range envVars {
 			if _, exists := originalEnv[env]; !exists {
-				os.Unsetenv(env)
+				if err := os.Unsetenv(env); err != nil {
+					t.Logf("Ошибка при удалении переменной окружения %s: %v", env, err)
+				}
 			}
 		}
 	}()
 
-	os.Setenv("SERVER_ADDRESS", "9090")
-	os.Setenv("BASE_URL", "https://example.com")
-	os.Setenv("FILE_STORAGE_PATH", "/tmp/storage.json")
-	os.Setenv("DATABASE_DSN", "postgres://user:pass@localhost/db")
-	os.Setenv("JWT_SECRET", "my_secret_key")
+	if err := os.Setenv("SERVER_ADDRESS", "9090"); err != nil {
+		t.Logf("Ошибка при установке SERVER_ADDRESS: %v", err)
+	}
+	if err := os.Setenv("BASE_URL", "https://example.com"); err != nil {
+		t.Logf("Ошибка при установке BASE_URL: %v", err)
+	}
+	if err := os.Setenv("FILE_STORAGE_PATH", "/tmp/storage.json"); err != nil {
+		t.Logf("Ошибка при установке FILE_STORAGE_PATH: %v", err)
+	}
+	if err := os.Setenv("DATABASE_DSN", "postgres://user:pass@localhost/db"); err != nil {
+		t.Logf("Ошибка при установке DATABASE_DSN: %v", err)
+	}
+	if err := os.Setenv("JWT_SECRET", "my_secret_key"); err != nil {
+		t.Logf("Ошибка при установке JWT_SECRET: %v", err)
+	}
 
 	assert.Equal(t, "9090", os.Getenv("SERVER_ADDRESS"))
 	assert.Equal(t, "https://example.com", os.Getenv("BASE_URL"))
@@ -122,22 +136,30 @@ func TestNewConfig_Integration(t *testing.T) {
 
 	defer func() {
 		for env, val := range originalEnv {
-			os.Setenv(env, val)
+			if err := os.Setenv(env, val); err != nil {
+				t.Logf("Ошибка при установке переменной окружения %s: %v", env, err)
+			}
 		}
 		for _, env := range envVars {
 			if _, exists := originalEnv[env]; !exists {
-				os.Unsetenv(env)
+				if err := os.Unsetenv(env); err != nil {
+					t.Logf("Ошибка при удалении переменной окружения %s: %v", env, err)
+				}
 			}
 		}
 	}()
 
 	for _, env := range envVars {
-		os.Unsetenv(env)
+		if err := os.Unsetenv(env); err != nil {
+			t.Logf("Ошибка при удалении переменной окружения %s: %v", env, err)
+		}
 	}
 
 	tempDir := t.TempDir()
 	filePath := tempDir + "/storage.json"
-	os.Setenv("FILE_STORAGE_PATH", filePath)
+	if err := os.Setenv("FILE_STORAGE_PATH", filePath); err != nil {
+		t.Logf("Ошибка при установке FILE_STORAGE_PATH: %v", err)
+	}
 
 	cfg, err := NewConfig()
 	assert.NoError(t, err)

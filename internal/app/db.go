@@ -2,6 +2,7 @@ package app
 
 import (
 	"database/sql"
+	"fmt"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/tempizhere/goshorty/internal/repository"
@@ -24,7 +25,9 @@ func NewDB(dsn string) (repository.Database, error) {
 	}
 
 	if err := conn.Ping(); err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to close connection after ping error: %v (original error: %v)", closeErr, err)
+		}
 		return nil, err
 	}
 
@@ -39,21 +42,27 @@ func NewDB(dsn string) (repository.Database, error) {
             )
         `)
 		if err != nil {
-			conn.Close()
+			if closeErr := conn.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to close connection after exec error: %v (original error: %v)", closeErr, err)
+			}
 			return nil, err
 		}
 
 		// Добавляем столбец user_id, если он не существует
 		_, err = conn.Exec("ALTER TABLE urls ADD COLUMN IF NOT EXISTS user_id VARCHAR")
 		if err != nil {
-			conn.Close()
+			if closeErr := conn.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to close connection after exec error: %v (original error: %v)", closeErr, err)
+			}
 			return nil, err
 		}
 
 		// Добавляем столбец is_deleted, если он не существует
 		_, err = conn.Exec("ALTER TABLE urls ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE")
 		if err != nil {
-			conn.Close()
+			if closeErr := conn.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to close connection after exec error: %v (original error: %v)", closeErr, err)
+			}
 			return nil, err
 		}
 
@@ -69,13 +78,17 @@ func NewDB(dsn string) (repository.Database, error) {
             )
         `).Scan(&indexExists)
 		if err != nil {
-			conn.Close()
+			if closeErr := conn.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to close connection after query error: %v (original error: %v)", closeErr, err)
+			}
 			return nil, err
 		}
 		if !indexExists {
 			_, err = conn.Exec("CREATE UNIQUE INDEX urls_original_url_key ON urls (original_url)")
 			if err != nil {
-				conn.Close()
+				if closeErr := conn.Close(); closeErr != nil {
+					return nil, fmt.Errorf("failed to close connection after exec error: %v (original error: %v)", closeErr, err)
+				}
 				return nil, err
 			}
 		}

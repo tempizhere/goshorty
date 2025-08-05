@@ -20,7 +20,11 @@ func TestPostgresRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	// Создаём PostgresRepository с реальной *sql.DB
 	repo := &PostgresRepository{
@@ -133,7 +137,11 @@ func TestPostgresRepository_BatchSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	repo := &PostgresRepository{
 		db:     db,
@@ -161,7 +169,11 @@ func TestPostgresRepository_GetURLsByUserID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	repo := &PostgresRepository{
 		db:     db,
