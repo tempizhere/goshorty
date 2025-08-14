@@ -21,8 +21,8 @@ func TestPostgresRepository(t *testing.T) {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("Failed to close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Failed to close database: %v", closeErr)
 		}
 	}()
 
@@ -138,8 +138,8 @@ func TestPostgresRepository_BatchSave(t *testing.T) {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("Failed to close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Failed to close database: %v", closeErr)
 		}
 	}()
 
@@ -170,8 +170,8 @@ func TestPostgresRepository_GetURLsByUserID(t *testing.T) {
 		t.Fatalf("Failed to create sqlmock: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("Failed to close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Failed to close database: %v", closeErr)
 		}
 	}()
 

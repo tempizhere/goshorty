@@ -1,3 +1,5 @@
+// Package middleware содержит HTTP middleware для обработки запросов.
+// Включает аутентификацию, логирование и сжатие ответов.
 package middleware
 
 import (
