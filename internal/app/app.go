@@ -93,7 +93,7 @@ func (a *App) HandlePostURL(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, repository.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
-			if _, err := w.Write([]byte(shortURL)); err != nil {
+			if _, writeErr := w.Write([]byte(shortURL)); writeErr != nil {
 				http.Error(w, "Failed to write response", http.StatusInternalServerError)
 			}
 			return

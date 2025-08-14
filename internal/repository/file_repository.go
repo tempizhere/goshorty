@@ -49,20 +49,20 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Файл не существует, создадим пустой
-			newFile, err := os.Create(filePath)
-			if err != nil {
-				return nil, err
+			newFile, createErr := os.Create(filePath)
+			if createErr != nil {
+				return nil, createErr
 			}
-			if err := newFile.Close(); err != nil {
-				return nil, err
+			if closeErr := newFile.Close(); closeErr != nil {
+				return nil, closeErr
 			}
 			return repo, nil
 		}
 		return nil, err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			repo.logger.Error("Failed to close file", zap.Error(err))
+		if closeErr := file.Close(); closeErr != nil {
+			repo.logger.Error("Failed to close file", zap.Error(closeErr))
 		}
 	}()
 
@@ -70,7 +70,7 @@ func NewFileRepository(filePath string, logger *zap.Logger) (*FileRepository, er
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var record URLRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+		if unmarshalErr := json.Unmarshal(scanner.Bytes(), &record); unmarshalErr != nil {
 			repo.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(err))
 			continue
 		}
@@ -115,10 +115,10 @@ func (r *FileRepository) Save(id, url, userID string) (string, error) {
 	data = append(data, '\n')
 
 	// Проверяем, существует ли файл, и пытаемся изменить права
-	if _, err := os.Stat(r.filePath); err == nil {
-		if err := os.Chmod(r.filePath, 0644); err != nil {
-			if err := os.Remove(r.filePath); err != nil {
-				return "", err
+	if _, statErr := os.Stat(r.filePath); statErr == nil {
+		if chmodErr := os.Chmod(r.filePath, 0644); chmodErr != nil {
+			if removeErr := os.Remove(r.filePath); removeErr != nil {
+				return "", removeErr
 			}
 		}
 	}
@@ -129,8 +129,8 @@ func (r *FileRepository) Save(id, url, userID string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			r.logger.Error("Failed to close file", zap.Error(err))
+		if closeErr := file.Close(); closeErr != nil {
+			r.logger.Error("Failed to close file", zap.Error(closeErr))
 		}
 	}()
 
@@ -165,7 +165,7 @@ func (r *FileRepository) Get(id string) (models.URL, bool) {
 	var record URLRecord
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+		if unmarshalErr := json.Unmarshal(scanner.Bytes(), &record); unmarshalErr != nil {
 			continue
 		}
 		if record.ShortURL == id {
@@ -264,8 +264,8 @@ func (r *FileRepository) GetURLsByUserID(userID string) ([]models.URL, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var record URLRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(err))
+		if unmarshalErr := json.Unmarshal(scanner.Bytes(), &record); unmarshalErr != nil {
+			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(unmarshalErr))
 			continue
 		}
 		if record.UserID == userID {
@@ -297,8 +297,8 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 		return err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			r.logger.Error("Failed to close file", zap.Error(err))
+		if closeErr := file.Close(); closeErr != nil {
+			r.logger.Error("Failed to close file", zap.Error(closeErr))
 		}
 	}()
 
@@ -306,8 +306,8 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var record URLRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(err))
+		if unmarshalErr := json.Unmarshal(scanner.Bytes(), &record); unmarshalErr != nil {
+			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(unmarshalErr))
 			continue
 		}
 		// Помечаем как удалённые только подходящие записи
@@ -319,8 +319,8 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 		}
 		records = append(records, record)
 	}
-	if err := scanner.Err(); err != nil {
-		return err
+	if scanErr := scanner.Err(); scanErr != nil {
+		return scanErr
 	}
 
 	// Переписываем файл

@@ -45,8 +45,8 @@ func main() {
 	// выводим код ответа
 	fmt.Println("Статус-код ", response.Status)
 	defer func() {
-		if err := response.Body.Close(); err != nil {
-			fmt.Printf("Failed to close response body: %v\n", err)
+		if closeErr := response.Body.Close(); closeErr != nil {
+			fmt.Printf("Failed to close response body: %v\n", closeErr)
 		}
 	}()
 	// читаем поток из тела ответа

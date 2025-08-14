@@ -564,12 +564,12 @@ func TestHandleGzipResponses(t *testing.T) {
 							}
 							w.Header().Set("Content-Type", "application/json")
 							w.WriteHeader(http.StatusConflict)
-							data, err := json.Marshal(respBody)
-							if err != nil {
+							data, marshalErr := json.Marshal(respBody)
+							if marshalErr != nil {
 								http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 								return
 							}
-							if _, err := w.Write(data); err != nil {
+							if _, writeErr := w.Write(data); writeErr != nil {
 								http.Error(w, "Failed to write response", http.StatusInternalServerError)
 							}
 							return
@@ -623,8 +623,8 @@ func TestHandleGzipResponses(t *testing.T) {
 				gz, err := gzip.NewReader(bytes.NewReader(responseBody))
 				assert.NoError(t, err, "Failed to create gzip reader")
 				defer func() {
-					if err := gz.Close(); err != nil {
-						t.Logf("Failed to close gzip reader: %v", err)
+					if closeErr := gz.Close(); closeErr != nil {
+						t.Logf("Failed to close gzip reader: %v", closeErr)
 					}
 				}()
 				decompressed, err := io.ReadAll(gz)
@@ -739,8 +739,8 @@ func TestHandleGetURL(t *testing.T) {
 				t.Fatalf("Failed to send request: %v", err)
 			}
 			defer func() {
-				if err := resp.Body.Close(); err != nil {
-					t.Logf("Failed to close response body: %v", err)
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					t.Logf("Failed to close response body: %v", closeErr)
 				}
 			}()
 
@@ -818,8 +818,8 @@ func TestHandleJSONExpand(t *testing.T) {
 				t.Fatalf("Failed to send request: %v", err)
 			}
 			defer func() {
-				if err := resp.Body.Close(); err != nil {
-					t.Logf("Failed to close response body: %v", err)
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					t.Logf("Failed to close response body: %v", closeErr)
 				}
 			}()
 			body, err := io.ReadAll(resp.Body)
@@ -1103,8 +1103,8 @@ func TestHandleBatchDeleteURLsSuccess(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "test_storage_*.json")
 	assert.NoError(t, err, "Failed to create temp file")
 	defer func() {
-		if err := os.Remove(tempFile.Name()); err != nil {
-			t.Logf("Failed to remove temporary file: %v", err)
+		if removeErr := os.Remove(tempFile.Name()); removeErr != nil {
+			t.Logf("Failed to remove temporary file: %v", removeErr)
 		}
 	}()
 
@@ -1145,8 +1145,8 @@ func TestHandleBatchDeleteURLsValidation(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "test_storage_*.json")
 	assert.NoError(t, err, "Failed to create temp file")
 	defer func() {
-		if err := os.Remove(tempFile.Name()); err != nil {
-			t.Logf("Failed to remove temporary file: %v", err)
+		if removeErr := os.Remove(tempFile.Name()); removeErr != nil {
+			t.Logf("Failed to remove temporary file: %v", removeErr)
 		}
 	}()
 
