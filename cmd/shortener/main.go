@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -13,7 +14,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// Глобальные переменные для информации о сборке
+var buildVersion string
+var buildDate string
+var buildCommit string
+
 func main() {
+	// Выводим информацию о сборке
+	printBuildInfo()
+
 	// Получаем конфигурацию
 	cfg, err := config.NewConfig()
 	if err != nil {
@@ -104,4 +113,26 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to start server", zap.Error(err))
 	}
+}
+
+// printBuildInfo выводит информацию о сборке в stdout
+func printBuildInfo() {
+	version := buildVersion
+	if version == "" {
+		version = "N/A"
+	}
+
+	date := buildDate
+	if date == "" {
+		date = "N/A"
+	}
+
+	commit := buildCommit
+	if commit == "" {
+		commit = "N/A"
+	}
+
+	fmt.Printf("Build version: %s\n", version)
+	fmt.Printf("Build date: %s\n", date)
+	fmt.Printf("Build commit: %s\n", commit)
 }
