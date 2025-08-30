@@ -353,6 +353,7 @@ func TestNewConfig_WithJSONFile(t *testing.T) {
 	assert.Equal(t, "/tmp/storage.json", cfg.FileStoragePath)
 	assert.Equal(t, "postgres://user:pass@localhost/db", cfg.DatabaseDSN)
 	assert.Equal(t, true, cfg.EnableHTTPS)
+	assert.Equal(t, "default_jwt_secret", cfg.JWTSecret)
 }
 
 func TestNewConfig_JSONFilePriority(t *testing.T) {
@@ -460,9 +461,10 @@ func TestNewConfig_JSONFilePriority(t *testing.T) {
 	}
 
 	// Проверяем приоритет: переменные окружения должны переопределить значения из JSON файла
-	assert.Equal(t, "localhost:8080", cfg.RunAddr)      // Переопределено переменной окружения
-	assert.Equal(t, "https://example.com", cfg.BaseURL) // Из JSON файла
-	assert.Equal(t, false, cfg.EnableHTTPS)             // Переопределено переменной окружения
+	assert.Equal(t, "localhost:8080", cfg.RunAddr)       // Переопределено переменной окружения
+	assert.Equal(t, "https://example.com", cfg.BaseURL)  // Из JSON файла
+	assert.Equal(t, false, cfg.EnableHTTPS)              // Переопределено переменной окружения
+	assert.Equal(t, "default_jwt_secret", cfg.JWTSecret) // Остается дефолтным значением
 }
 
 func TestConfig_FileStoragePath(t *testing.T) {
