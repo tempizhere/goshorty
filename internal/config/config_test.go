@@ -455,9 +455,6 @@ func TestNewConfig_JSONFilePriority(t *testing.T) {
 	if dsn := os.Getenv("DATABASE_DSN"); dsn != "" {
 		cfg.DatabaseDSN = dsn
 	}
-	if secret := os.Getenv("JWT_SECRET"); secret != "" {
-		cfg.JWTSecret = secret
-	}
 	if enableHTTPS := os.Getenv("ENABLE_HTTPS"); enableHTTPS != "" {
 		cfg.EnableHTTPS = enableHTTPS == "true"
 	}
