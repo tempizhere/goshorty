@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -20,8 +21,42 @@ type Config struct {
 	EnableHTTPS     bool   // Флаг включения HTTPS
 }
 
+// ConfigFile представляет структуру для десериализации JSON-файла конфигурации
+type ConfigFile struct {
+	ServerAddress   string `json:"server_address"`
+	BaseURL         string `json:"base_url"`
+	FileStoragePath string `json:"file_storage_path"`
+	DatabaseDSN     string `json:"database_dsn"`
+	EnableHTTPS     bool   `json:"enable_https"`
+}
+
+// loadConfigFile загружает конфигурацию из JSON-файла
+func loadConfigFile(path string) (*ConfigFile, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // Файл не существует, это не ошибка
+		}
+		return nil, err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	var configFile ConfigFile
+	if err := json.NewDecoder(file).Decode(&configFile); err != nil {
+		return nil, err
+	}
+
+	return &configFile, nil
+}
+
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
-// Поддерживает настройку через переменные окружения и флаги командной строки
+// Поддерживает настройку через переменные окружения, флаги командной строки и JSON-файл
 func NewConfig() (*Config, error) {
 	cfg := &Config{
 		RunAddr:         ":8080",
@@ -39,7 +74,41 @@ func NewConfig() (*Config, error) {
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
 	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
 	flagEnableHTTPS := flag.Bool("s", false, "enable HTTPS server")
+	flagConfigFile := flag.String("c", "", "path to configuration file")
+	flagConfigFileAlt := flag.String("config", "", "path to configuration file")
 	flag.Parse()
+
+	// Определяем путь к файлу конфигурации
+	configFilePath := os.Getenv("CONFIG")
+	if configFilePath == "" {
+		configFilePath = *flagConfigFile
+	}
+	if configFilePath == "" {
+		configFilePath = *flagConfigFileAlt
+	}
+
+	// Загружаем конфигурацию из файла
+	configFile, err := loadConfigFile(configFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Применяем значения из файла конфигурации как значения по умолчанию
+	if configFile != nil {
+		if configFile.ServerAddress != "" {
+			cfg.RunAddr = configFile.ServerAddress
+		}
+		if configFile.BaseURL != "" {
+			cfg.BaseURL = configFile.BaseURL
+		}
+		if configFile.FileStoragePath != "" {
+			cfg.FileStoragePath = configFile.FileStoragePath
+		}
+		if configFile.DatabaseDSN != "" {
+			cfg.DatabaseDSN = configFile.DatabaseDSN
+		}
+		cfg.EnableHTTPS = configFile.EnableHTTPS
+	}
 
 	// Проверяем переменные окружения
 	if addr := os.Getenv("SERVER_ADDRESS"); addr != "" {
