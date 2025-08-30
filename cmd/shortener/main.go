@@ -109,9 +109,19 @@ func main() {
 		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
-	err = http.ListenAndServe(cfg.RunAddr, r)
-	if err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
+	// Запускаем сервер в зависимости от конфигурации HTTPS
+	if cfg.EnableHTTPS {
+		logger.Info("Starting HTTPS server", zap.String("address", cfg.RunAddr))
+		err = http.ListenAndServeTLS(cfg.RunAddr, "cert.pem", "key.pem", r)
+		if err != nil {
+			logger.Fatal("Failed to start HTTPS server", zap.Error(err))
+		}
+	} else {
+		logger.Info("Starting HTTP server", zap.String("address", cfg.RunAddr))
+		err = http.ListenAndServe(cfg.RunAddr, r)
+		if err != nil {
+			logger.Fatal("Failed to start HTTP server", zap.Error(err))
+		}
 	}
 }
 
