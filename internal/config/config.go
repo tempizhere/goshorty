@@ -17,6 +17,7 @@ type Config struct {
 	FileStoragePath string // Путь к файлу для хранения URL
 	DatabaseDSN     string // Строка подключения к базе данных PostgreSQL
 	JWTSecret       string // Секретный ключ для подписи JWT токенов
+	EnableHTTPS     bool   // Флаг включения HTTPS
 }
 
 // NewConfig создает и возвращает новый объект Config с настройками по умолчанию и парсит флаги командной строки
@@ -28,6 +29,7 @@ func NewConfig() (*Config, error) {
 		FileStoragePath: "internal/storage/storage.json",
 		DatabaseDSN:     "",
 		JWTSecret:       "default_jwt_secret",
+		EnableHTTPS:     false,
 	}
 
 	// Регистрируем флаги
@@ -36,6 +38,7 @@ func NewConfig() (*Config, error) {
 	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
 	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
+	flagEnableHTTPS := flag.Bool("s", false, "enable HTTPS server")
 	flag.Parse()
 
 	// Проверяем переменные окружения
@@ -67,6 +70,12 @@ func NewConfig() (*Config, error) {
 		cfg.JWTSecret = secret
 	} else if *flagJWTSecret != "" {
 		cfg.JWTSecret = *flagJWTSecret
+	}
+
+	if enableHTTPS := os.Getenv("ENABLE_HTTPS"); enableHTTPS != "" {
+		cfg.EnableHTTPS = enableHTTPS == "true"
+	} else {
+		cfg.EnableHTTPS = *flagEnableHTTPS
 	}
 
 	// Валидация значений
