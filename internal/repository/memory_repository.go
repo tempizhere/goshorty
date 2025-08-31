@@ -114,3 +114,9 @@ func (r *MemoryRepository) BatchDelete(userID string, ids []string) error {
 	}
 	return nil
 }
+
+// Close закрывает ресурсы репозитория (для MemoryRepository ничего не делает)
+func (r *MemoryRepository) Close() error {
+	// MemoryRepository не имеет ресурсов для закрытия
+	return nil
+}

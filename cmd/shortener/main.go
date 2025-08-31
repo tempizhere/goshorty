@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
@@ -109,20 +114,56 @@ func main() {
 		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
-	// Запускаем сервер в зависимости от конфигурации HTTPS
-	if cfg.EnableHTTPS {
-		logger.Info("Starting HTTPS server", zap.String("address", cfg.RunAddr))
-		err = http.ListenAndServeTLS(cfg.RunAddr, "cert.pem", "key.pem", r)
-		if err != nil {
-			logger.Fatal("Failed to start HTTPS server", zap.Error(err))
-		}
-	} else {
-		logger.Info("Starting HTTP server", zap.String("address", cfg.RunAddr))
-		err = http.ListenAndServe(cfg.RunAddr, r)
-		if err != nil {
-			logger.Fatal("Failed to start HTTP server", zap.Error(err))
-		}
+	// Создаём HTTP сервер с настройками для graceful shutdown
+	server := &http.Server{
+		Addr:         cfg.RunAddr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Канал для получения сигналов завершения
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	// Запускаем сервер в горутине
+	go func() {
+		if cfg.EnableHTTPS {
+			logger.Info("Starting HTTPS server", zap.String("address", cfg.RunAddr))
+			if err := server.ListenAndServeTLS("cert.pem", "key.pem"); err != nil && err != http.ErrServerClosed {
+				logger.Fatal("Failed to start HTTPS server", zap.Error(err))
+			}
+		} else {
+			logger.Info("Starting HTTP server", zap.String("address", cfg.RunAddr))
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Fatal("Failed to start HTTP server", zap.Error(err))
+			}
+		}
+	}()
+
+	// Ожидаем сигнал завершения
+	sig := <-sigChan
+	logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
+
+	// Graceful shutdown
+	logger.Info("Starting graceful shutdown...")
+
+	// Создаем контекст с таймаутом для graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Останавливаем сервер
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error("Server shutdown error", zap.Error(err))
+	}
+
+	// Закрываем репозиторий
+	if err := repo.Close(); err != nil {
+		logger.Error("Failed to close repository", zap.Error(err))
+	}
+
+	logger.Info("Graceful shutdown completed")
 }
 
 // printBuildInfo выводит информацию о сборке в stdout
