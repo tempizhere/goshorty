@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -123,38 +122,36 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Канал для получения сигналов завершения
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	// Graceful shutdown
+	// Создаем контекст, который будет отменен при получении сигнала завершения
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer stop()
 
 	// Запускаем сервер в горутине
 	go func() {
+		var err error
 		if cfg.EnableHTTPS {
 			logger.Info("Starting HTTPS server", zap.String("address", cfg.RunAddr))
-			if err := server.ListenAndServeTLS("cert.pem", "key.pem"); err != nil && err != http.ErrServerClosed {
-				logger.Fatal("Failed to start HTTPS server", zap.Error(err))
-			}
+			err = server.ListenAndServeTLS("cert.pem", "key.pem")
 		} else {
 			logger.Info("Starting HTTP server", zap.String("address", cfg.RunAddr))
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				logger.Fatal("Failed to start HTTP server", zap.Error(err))
-			}
+			err = server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Server error", zap.Error(err))
 		}
 	}()
 
-	// Ожидаем сигнал завершения
-	sig := <-sigChan
-	logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
-
-	// Graceful shutdown
-	logger.Info("Starting graceful shutdown...")
+	// Ждем сигнала завершения
+	<-ctx.Done()
+	logger.Info("Received shutdown signal, starting graceful shutdown...")
 
 	// Создаем контекст с таймаутом для graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Останавливаем сервер
-	if err := server.Shutdown(ctx); err != nil {
+	// Graceful shutdown
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Server shutdown error", zap.Error(err))
 	}
 
