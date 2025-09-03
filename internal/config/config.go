@@ -79,8 +79,8 @@ func NewConfig() (*Config, error) {
 	flag.Parse()
 
 	// Определяем путь к файлу конфигурации
-	configFilePath := os.Getenv("CONFIG")
-	if configFilePath == "" {
+	configFilePath, configEnvSet := os.LookupEnv("CONFIG")
+	if !configEnvSet {
 		configFilePath = *flagConfigFile
 	}
 	if configFilePath == "" {
@@ -111,37 +111,37 @@ func NewConfig() (*Config, error) {
 	}
 
 	// Проверяем переменные окружения
-	if addr := os.Getenv("SERVER_ADDRESS"); addr != "" {
+	if addr, addrSet := os.LookupEnv("SERVER_ADDRESS"); addrSet {
 		cfg.RunAddr = addr
 	} else if *flagRunAddr != "" {
 		cfg.RunAddr = *flagRunAddr
 	}
 
-	if url := os.Getenv("BASE_URL"); url != "" {
+	if url, urlSet := os.LookupEnv("BASE_URL"); urlSet {
 		cfg.BaseURL = url
 	} else if *flagBaseURL != "" {
 		cfg.BaseURL = *flagBaseURL
 	}
 
-	if path := os.Getenv("FILE_STORAGE_PATH"); path != "" {
+	if path, pathSet := os.LookupEnv("FILE_STORAGE_PATH"); pathSet {
 		cfg.FileStoragePath = path
 	} else if *flagFilePath != "" {
 		cfg.FileStoragePath = *flagFilePath
 	}
 
-	if dsn := os.Getenv("DATABASE_DSN"); dsn != "" {
+	if dsn, dsnSet := os.LookupEnv("DATABASE_DSN"); dsnSet {
 		cfg.DatabaseDSN = dsn
 	} else if *flagDatabaseDSN != "" {
 		cfg.DatabaseDSN = *flagDatabaseDSN
 	}
 
-	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+	if secret, secretSet := os.LookupEnv("JWT_SECRET"); secretSet {
 		cfg.JWTSecret = secret
 	} else if *flagJWTSecret != "" {
 		cfg.JWTSecret = *flagJWTSecret
 	}
 
-	if enableHTTPS := os.Getenv("ENABLE_HTTPS"); enableHTTPS != "" {
+	if enableHTTPS, httpsSet := os.LookupEnv("ENABLE_HTTPS"); httpsSet {
 		cfg.EnableHTTPS = enableHTTPS == "true"
 	} else {
 		cfg.EnableHTTPS = *flagEnableHTTPS

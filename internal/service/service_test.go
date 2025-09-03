@@ -85,6 +85,11 @@ func (m *mockRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+func (m *mockRepository) Close() error {
+	// Mock repository не имеет ресурсов для закрытия
+	return nil
+}
+
 func TestService(t *testing.T) {
 	const testUserID = "test_user"
 	repo := &mockRepository{store: make(map[string]models.URL)}

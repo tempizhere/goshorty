@@ -165,3 +165,22 @@ func TestMemoryRepository_BatchDelete(t *testing.T) {
 	assert.True(t, exists, "URL should still exist")
 	assert.False(t, url.DeletedFlag, "URL should not be marked as deleted")
 }
+
+func TestMemoryRepository_Close(t *testing.T) {
+	repo := NewMemoryRepository()
+
+	// Сохраняем несколько URL
+	_, err := repo.Save("id1", "https://example1.com", "user1")
+	assert.NoError(t, err)
+	_, err = repo.Save("id2", "https://example2.com", "user1")
+	assert.NoError(t, err)
+
+	// Тест: Close должен завершаться без ошибок
+	err = repo.Close()
+	assert.NoError(t, err, "Close should not return error")
+
+	// Проверяем, что данные все еще доступны после Close (MemoryRepository не очищает данные)
+	url, exists := repo.Get("id1")
+	assert.True(t, exists, "URL should still exist after Close")
+	assert.Equal(t, "https://example1.com", url.OriginalURL)
+}
