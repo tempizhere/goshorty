@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
@@ -109,10 +113,54 @@ func main() {
 		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
-	err = http.ListenAndServe(cfg.RunAddr, r)
-	if err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
+	// Создаём HTTP сервер с настройками для graceful shutdown
+	server := &http.Server{
+		Addr:         cfg.RunAddr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Graceful shutdown
+	// Создаем контекст, который будет отменен при получении сигнала завершения
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer stop()
+
+	// Запускаем сервер в горутине
+	go func() {
+		var err error
+		if cfg.EnableHTTPS {
+			logger.Info("Starting HTTPS server", zap.String("address", cfg.RunAddr))
+			err = server.ListenAndServeTLS("cert.pem", "key.pem")
+		} else {
+			logger.Info("Starting HTTP server", zap.String("address", cfg.RunAddr))
+			err = server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Server error", zap.Error(err))
+		}
+	}()
+
+	// Ждем сигнала завершения
+	<-ctx.Done()
+	logger.Info("Received shutdown signal, starting graceful shutdown...")
+
+	// Создаем контекст с таймаутом для graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Graceful shutdown
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Server shutdown error", zap.Error(err))
+	}
+
+	// Закрываем репозиторий
+	if err := repo.Close(); err != nil {
+		logger.Error("Failed to close repository", zap.Error(err))
+	}
+
+	logger.Info("Graceful shutdown completed")
 }
 
 // printBuildInfo выводит информацию о сборке в stdout

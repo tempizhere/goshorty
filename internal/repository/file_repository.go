@@ -352,3 +352,14 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 
 	return nil
 }
+
+// Close закрывает ресурсы репозитория (убеждается, что все данные записаны в файл)
+func (r *FileRepository) Close() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// FileRepository сохраняет данные при каждой операции,
+	// поэтому здесь просто логируем закрытие
+	r.logger.Info("FileRepository closed", zap.String("file_path", r.filePath))
+	return nil
+}

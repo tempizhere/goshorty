@@ -158,3 +158,30 @@ func TestFileRepository_GetURLsByUserID(t *testing.T) {
 	assert.NoError(t, err, "GetURLsByUserID should succeed for non-existent user")
 	assert.Len(t, urls, 0, "Should return empty slice for non-existent user")
 }
+
+func TestFileRepository_Close(t *testing.T) {
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "storage_close.json")
+
+	repo, err := NewFileRepository(tempFile, zap.NewNop())
+	assert.NoError(t, err, "Failed to create file repository")
+
+	// Сохраняем несколько URL
+	_, err = repo.Save("id1", "https://example1.com", "user1")
+	assert.NoError(t, err)
+	_, err = repo.Save("id2", "https://example2.com", "user1")
+	assert.NoError(t, err)
+
+	// Тест: Close должен завершаться без ошибок
+	err = repo.Close()
+	assert.NoError(t, err, "Close should not return error")
+
+	// Проверяем, что данные все еще доступны после Close
+	url, exists := repo.Get("id1")
+	assert.True(t, exists, "URL should still exist after Close")
+	assert.Equal(t, "https://example1.com", url.OriginalURL)
+
+	// Проверяем, что файл все еще существует
+	_, err = os.Stat(tempFile)
+	assert.NoError(t, err, "File should still exist after Close")
+}

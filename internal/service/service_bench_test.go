@@ -61,6 +61,11 @@ func (m *benchmarkRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+func (m *benchmarkRepository) Close() error {
+	// Benchmark repository не имеет ресурсов для закрытия
+	return nil
+}
+
 // Бенчмарки для генерации коротких ID
 func BenchmarkGenerateShortID(b *testing.B) {
 	svc := NewService(newBenchmarkRepository(), "http://localhost:8080", "secret")

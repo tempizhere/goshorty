@@ -194,3 +194,23 @@ func TestPostgresRepository_GetURLsByUserID(t *testing.T) {
 	assert.Equal(t, "https://example1.com", urls[0].OriginalURL)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestPostgresRepository_Close(t *testing.T) {
+	logger := zap.NewNop()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create sqlmock: %v", err)
+	}
+
+	repo := &PostgresRepository{
+		db:     db,
+		logger: logger,
+	}
+
+	// Тест: Close должен закрыть соединение с базой данных
+	mock.ExpectClose()
+
+	err = repo.Close()
+	assert.NoError(t, err, "Close should not return error")
+	assert.NoError(t, mock.ExpectationsWereMet(), "Expected Close() to be called on database")
+}
