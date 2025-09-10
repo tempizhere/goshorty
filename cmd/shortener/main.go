@@ -113,6 +113,14 @@ func main() {
 		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
+	// Маршрут для статистики с проверкой доверенной подсети
+	r.Route("/api/internal", func(r chi.Router) {
+		r.Use(middleware.TrustedSubnetMiddleware(cfg.TrustedSubnet, logger))
+		r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
+			appInstance.HandleStats(w, r)
+		})
+	})
+
 	// Создаём HTTP сервер с настройками для graceful shutdown
 	server := &http.Server{
 		Addr:         cfg.RunAddr,

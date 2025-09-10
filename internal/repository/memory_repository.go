@@ -115,6 +115,27 @@ func (r *MemoryRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+// GetStats возвращает статистику сервиса: количество URL и пользователей
+func (r *MemoryRepository) GetStats() (int, int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	// Подсчитываем уникальные URL (не удаленные) и пользователей
+	urlCount := 0
+	userSet := make(map[string]struct{})
+
+	for _, u := range r.store {
+		if !u.DeletedFlag {
+			urlCount++
+			if u.UserID != "" {
+				userSet[u.UserID] = struct{}{}
+			}
+		}
+	}
+
+	return urlCount, len(userSet), nil
+}
+
 // Close закрывает ресурсы репозитория (для MemoryRepository ничего не делает)
 func (r *MemoryRepository) Close() error {
 	// MemoryRepository не имеет ресурсов для закрытия

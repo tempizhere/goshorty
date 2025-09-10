@@ -61,6 +61,22 @@ func (m *benchmarkRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+func (m *benchmarkRepository) GetStats() (int, int, error) {
+	urlCount := 0
+	userSet := make(map[string]struct{})
+
+	for _, u := range m.urls {
+		if !u.DeletedFlag {
+			urlCount++
+			if u.UserID != "" {
+				userSet[u.UserID] = struct{}{}
+			}
+		}
+	}
+
+	return urlCount, len(userSet), nil
+}
+
 func (m *benchmarkRepository) Close() error {
 	// Benchmark repository не имеет ресурсов для закрытия
 	return nil
