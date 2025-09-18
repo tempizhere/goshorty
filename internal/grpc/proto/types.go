@@ -3,46 +3,46 @@ package proto
 
 // CreateShortURLRequest представляет запрос на создание короткого URL
 type CreateShortURLRequest struct {
-	OriginalUrl string `json:"original_url"`
+	OriginalURL string `json:"original_url"`
 }
 
 // CreateShortURLResponse представляет ответ с созданным коротким URL
 type CreateShortURLResponse struct {
-	ShortUrl  string `json:"short_url"`
-	UrlExists bool   `json:"url_exists"`
+	ShortURL  string `json:"short_url"`
+	URLExists bool   `json:"url_exists"`
 }
 
 // GetOriginalURLRequest представляет запрос на получение оригинального URL
 type GetOriginalURLRequest struct {
-	ShortId string `json:"short_id"`
+	ShortID string `json:"short_id"`
 }
 
 // GetOriginalURLResponse представляет ответ с оригинальным URL
 type GetOriginalURLResponse struct {
-	OriginalUrl string `json:"original_url"`
+	OriginalURL string `json:"original_url"`
 	Found       bool   `json:"found"`
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
 // ShortenURLRequest представляет JSON запрос на сокращение URL
 type ShortenURLRequest struct {
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 
 // ShortenURLResponse представляет JSON ответ с коротким URL
 type ShortenURLResponse struct {
 	Result    string `json:"result"`
-	UrlExists bool   `json:"url_exists"`
+	URLExists bool   `json:"url_exists"`
 }
 
 // ExpandURLRequest представляет запрос на получение оригинального URL через API
 type ExpandURLRequest struct {
-	ShortId string `json:"short_id"`
+	ShortID string `json:"short_id"`
 }
 
 // ExpandURLResponse представляет ответ с оригинальным URL через API
 type ExpandURLResponse struct {
-	Url   string `json:"url"`
+	URL   string `json:"url"`
 	Found bool   `json:"found"`
 }
 
@@ -56,14 +56,14 @@ type PingResponse struct {
 
 // BatchRequest представляет элемент пакетного запроса
 type BatchRequest struct {
-	CorrelationId string `json:"correlation_id"`
-	OriginalUrl   string `json:"original_url"`
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
 }
 
 // BatchResponse представляет элемент пакетного ответа
 type BatchResponse struct {
-	CorrelationId string `json:"correlation_id"`
-	ShortUrl      string `json:"short_url"`
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
 }
 
 // BatchShortenRequest представляет запрос пакетного сокращения
@@ -82,8 +82,8 @@ type GetUserURLsRequest struct{}
 
 // ShortURLResponse представляет информацию о коротком URL
 type ShortURLResponse struct {
-	ShortUrl    string `json:"short_url"`
-	OriginalUrl string `json:"original_url"`
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
 }
 
 // GetUserURLsResponse представляет ответ со списком URL пользователя

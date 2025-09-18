@@ -33,7 +33,7 @@ func NewServer(svc *service.Service, db repository.Database, logger *zap.Logger)
 
 // CreateShortURL обрабатывает создание короткого URL
 func (s *Server) CreateShortURL(ctx context.Context, req *proto.CreateShortURLRequest) (*proto.CreateShortURLResponse, error) {
-	if req.OriginalUrl == "" {
+	if req.OriginalURL == "" {
 		return nil, status.Error(codes.InvalidArgument, "original URL is required")
 	}
 
@@ -42,32 +42,32 @@ func (s *Server) CreateShortURL(ctx context.Context, req *proto.CreateShortURLRe
 		return nil, err
 	}
 
-	shortURL, err := s.svc.CreateShortURL(req.OriginalUrl, userID)
+	shortURL, err := s.svc.CreateShortURL(req.OriginalURL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			return &proto.CreateShortURLResponse{
-				ShortUrl:  shortURL,
-				UrlExists: true,
+				ShortURL:  shortURL,
+				URLExists: true,
 			}, nil
 		}
 		return nil, s.mapError(err)
 	}
 
 	return &proto.CreateShortURLResponse{
-		ShortUrl:  shortURL,
-		UrlExists: false,
+		ShortURL:  shortURL,
+		URLExists: false,
 	}, nil
 }
 
 // GetOriginalURL обрабатывает получение оригинального URL
 func (s *Server) GetOriginalURL(ctx context.Context, req *proto.GetOriginalURLRequest) (*proto.GetOriginalURLResponse, error) {
-	if req.ShortId == "" {
+	if req.ShortID == "" {
 		return nil, status.Error(codes.InvalidArgument, "short ID is required")
 	}
 
-	originalURL, exists := s.svc.GetOriginalURL(req.ShortId)
+	originalURL, exists := s.svc.GetOriginalURL(req.ShortID)
 	if !exists {
-		u, found := s.svc.Get(req.ShortId)
+		u, found := s.svc.Get(req.ShortID)
 		if found && u.DeletedFlag {
 			return &proto.GetOriginalURLResponse{
 				Found:     false,
@@ -80,7 +80,7 @@ func (s *Server) GetOriginalURL(ctx context.Context, req *proto.GetOriginalURLRe
 	}
 
 	return &proto.GetOriginalURLResponse{
-		OriginalUrl: originalURL,
+		OriginalURL: originalURL,
 		Found:       true,
 		IsDeleted:   false,
 	}, nil
@@ -88,7 +88,7 @@ func (s *Server) GetOriginalURL(ctx context.Context, req *proto.GetOriginalURLRe
 
 // ShortenURL обрабатывает JSON API для сокращения URL
 func (s *Server) ShortenURL(ctx context.Context, req *proto.ShortenURLRequest) (*proto.ShortenURLResponse, error) {
-	if req.Url == "" {
+	if req.URL == "" {
 		return nil, status.Error(codes.InvalidArgument, "URL is required")
 	}
 
@@ -97,12 +97,12 @@ func (s *Server) ShortenURL(ctx context.Context, req *proto.ShortenURLRequest) (
 		return nil, err
 	}
 
-	shortURL, err := s.svc.CreateShortURL(req.Url, userID)
+	shortURL, err := s.svc.CreateShortURL(req.URL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLExists) {
 			return &proto.ShortenURLResponse{
 				Result:    shortURL,
-				UrlExists: true,
+				URLExists: true,
 			}, nil
 		}
 		return nil, s.mapError(err)
@@ -110,17 +110,17 @@ func (s *Server) ShortenURL(ctx context.Context, req *proto.ShortenURLRequest) (
 
 	return &proto.ShortenURLResponse{
 		Result:    shortURL,
-		UrlExists: false,
+		URLExists: false,
 	}, nil
 }
 
 // ExpandURL обрабатывает JSON API для получения оригинального URL
 func (s *Server) ExpandURL(ctx context.Context, req *proto.ExpandURLRequest) (*proto.ExpandURLResponse, error) {
-	if req.ShortId == "" {
+	if req.ShortID == "" {
 		return nil, status.Error(codes.InvalidArgument, "short ID is required")
 	}
 
-	originalURL, exists := s.svc.GetOriginalURL(req.ShortId)
+	originalURL, exists := s.svc.GetOriginalURL(req.ShortID)
 	if !exists {
 		return &proto.ExpandURLResponse{
 			Found: false,
@@ -128,7 +128,7 @@ func (s *Server) ExpandURL(ctx context.Context, req *proto.ExpandURLRequest) (*p
 	}
 
 	return &proto.ExpandURLResponse{
-		Url:   originalURL,
+		URL:   originalURL,
 		Found: true,
 	}, nil
 }
@@ -159,8 +159,8 @@ func (s *Server) BatchShorten(ctx context.Context, req *proto.BatchShortenReques
 	requests := make([]models.BatchRequest, len(req.BatchRequests))
 	for i, r := range req.BatchRequests {
 		requests[i] = models.BatchRequest{
-			CorrelationID: r.CorrelationId,
-			OriginalURL:   r.OriginalUrl,
+			CorrelationID: r.CorrelationID,
+			OriginalURL:   r.OriginalURL,
 		}
 	}
 
@@ -170,8 +170,8 @@ func (s *Server) BatchShorten(ctx context.Context, req *proto.BatchShortenReques
 			protoResponses := make([]*proto.BatchResponse, len(responses))
 			for i, r := range responses {
 				protoResponses[i] = &proto.BatchResponse{
-					CorrelationId: r.CorrelationID,
-					ShortUrl:      r.ShortURL,
+					CorrelationID: r.CorrelationID,
+					ShortURL:      r.ShortURL,
 				}
 			}
 			return &proto.BatchShortenResponse{
@@ -185,8 +185,8 @@ func (s *Server) BatchShorten(ctx context.Context, req *proto.BatchShortenReques
 	protoResponses := make([]*proto.BatchResponse, len(responses))
 	for i, r := range responses {
 		protoResponses[i] = &proto.BatchResponse{
-			CorrelationId: r.CorrelationID,
-			ShortUrl:      r.ShortURL,
+			CorrelationID: r.CorrelationID,
+			ShortURL:      r.ShortURL,
 		}
 	}
 
@@ -215,8 +215,8 @@ func (s *Server) GetUserURLs(ctx context.Context, req *proto.GetUserURLsRequest)
 	protoURLs := make([]*proto.ShortURLResponse, len(urls))
 	for i, u := range urls {
 		protoURLs[i] = &proto.ShortURLResponse{
-			ShortUrl:    u.ShortURL,
-			OriginalUrl: u.OriginalURL,
+			ShortURL:    u.ShortURL,
+			OriginalURL: u.OriginalURL,
 		}
 	}
 
