@@ -320,6 +320,30 @@ func (a *App) HandleBatchDeleteURLs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// HandleStats обрабатывает GET-запросы на "/api/internal/stats" для получения статистики сервиса
+func (a *App) HandleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Получаем статистику через сервис
+	urls, users, err := a.svc.GetStats()
+	if err != nil {
+		a.logger.Error("Failed to get stats", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Формируем ответ
+	respBody := models.StatsResponse{
+		URLs:  urls,
+		Users: users,
+	}
+
+	a.writeJSONResponse(w, http.StatusOK, respBody)
+}
+
 // Пул буферов для JSON кодирования
 var jsonBufferPool = sync.Pool{
 	New: func() interface{} {

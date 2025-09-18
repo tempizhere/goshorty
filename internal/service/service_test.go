@@ -85,6 +85,22 @@ func (m *mockRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+func (m *mockRepository) GetStats() (int, int, error) {
+	urlCount := 0
+	userSet := make(map[string]struct{})
+
+	for _, u := range m.store {
+		if !u.DeletedFlag {
+			urlCount++
+			if u.UserID != "" {
+				userSet[u.UserID] = struct{}{}
+			}
+		}
+	}
+
+	return urlCount, len(userSet), nil
+}
+
 func (m *mockRepository) Close() error {
 	// Mock repository не имеет ресурсов для закрытия
 	return nil

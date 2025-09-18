@@ -236,3 +236,24 @@ func (r *PostgresRepository) BatchDelete(userID string, ids []string) error {
 		zap.Int64("rows_affected", rowsAffected))
 	return nil
 }
+
+// GetStats возвращает статистику сервиса: количество URL и пользователей
+func (r *PostgresRepository) GetStats() (int, int, error) {
+	// Подсчитываем количество не удаленных URL
+	var urlCount int
+	err := r.db.QueryRow("SELECT COUNT(*) FROM urls WHERE is_deleted = FALSE").Scan(&urlCount)
+	if err != nil {
+		r.logger.Error("Failed to count URLs", zap.Error(err))
+		return 0, 0, err
+	}
+
+	// Подсчитываем количество уникальных пользователей
+	var userCount int
+	err = r.db.QueryRow("SELECT COUNT(DISTINCT user_id) FROM urls WHERE is_deleted = FALSE AND user_id IS NOT NULL AND user_id != ''").Scan(&userCount)
+	if err != nil {
+		r.logger.Error("Failed to count users", zap.Error(err))
+		return 0, 0, err
+	}
+
+	return urlCount, userCount, nil
+}

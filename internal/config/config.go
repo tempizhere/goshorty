@@ -19,6 +19,7 @@ type Config struct {
 	DatabaseDSN     string // Строка подключения к базе данных PostgreSQL
 	JWTSecret       string // Секретный ключ для подписи JWT токенов
 	EnableHTTPS     bool   // Флаг включения HTTPS
+	TrustedSubnet   string // Доверенная подсеть в формате CIDR для доступа к внутренним API
 }
 
 // ConfigFile представляет структуру для десериализации JSON-файла конфигурации
@@ -28,6 +29,7 @@ type ConfigFile struct {
 	FileStoragePath string `json:"file_storage_path"`
 	DatabaseDSN     string `json:"database_dsn"`
 	EnableHTTPS     bool   `json:"enable_https"`
+	TrustedSubnet   string `json:"trusted_subnet"`
 }
 
 // loadConfigFile загружает конфигурацию из JSON-файла
@@ -65,6 +67,7 @@ func NewConfig() (*Config, error) {
 		DatabaseDSN:     "",
 		JWTSecret:       "default_jwt_secret",
 		EnableHTTPS:     false,
+		TrustedSubnet:   "",
 	}
 
 	// Регистрируем флаги
@@ -74,6 +77,7 @@ func NewConfig() (*Config, error) {
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
 	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
 	flagEnableHTTPS := flag.Bool("s", false, "enable HTTPS server")
+	flagTrustedSubnet := flag.String("t", "", "trusted subnet CIDR for internal API access")
 	flagConfigFile := flag.String("c", "", "path to configuration file")
 	flagConfigFileAlt := flag.String("config", "", "path to configuration file")
 	flag.Parse()
@@ -108,6 +112,9 @@ func NewConfig() (*Config, error) {
 			cfg.DatabaseDSN = configFile.DatabaseDSN
 		}
 		cfg.EnableHTTPS = configFile.EnableHTTPS
+		if configFile.TrustedSubnet != "" {
+			cfg.TrustedSubnet = configFile.TrustedSubnet
+		}
 	}
 
 	// Проверяем переменные окружения
@@ -145,6 +152,12 @@ func NewConfig() (*Config, error) {
 		cfg.EnableHTTPS = enableHTTPS == "true"
 	} else {
 		cfg.EnableHTTPS = *flagEnableHTTPS
+	}
+
+	if trustedSubnet, subnetSet := os.LookupEnv("TRUSTED_SUBNET"); subnetSet {
+		cfg.TrustedSubnet = trustedSubnet
+	} else if *flagTrustedSubnet != "" {
+		cfg.TrustedSubnet = *flagTrustedSubnet
 	}
 
 	// Валидация значений

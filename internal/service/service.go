@@ -253,3 +253,8 @@ func (s *Service) BatchDeleteAsync(userID string, ids []string) {
 		}
 	}()
 }
+
+// GetStats возвращает статистику сервиса: количество URL и пользователей
+func (s *Service) GetStats() (int, int, error) {
+	return s.repo.GetStats()
+}
