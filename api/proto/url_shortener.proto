@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package shortener.v1;
+option go_package = "github.com/tempizhere/goshorty/internal/grpc/proto";
+
+service ShortenerService {
+  rpc CreateShortURL(CreateShortURLRequest) returns (CreateShortURLResponse);
+  rpc GetOriginalURL(GetOriginalURLRequest) returns (GetOriginalURLResponse);
+  rpc ShortenURL(ShortenURLRequest) returns (ShortenURLResponse);
+  rpc ExpandURL(ExpandURLRequest) returns (ExpandURLResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc BatchShorten(BatchShortenRequest) returns (BatchShortenResponse);
+  rpc GetUserURLs(GetUserURLsRequest) returns (GetUserURLsResponse);
+  rpc BatchDeleteURLs(BatchDeleteURLsRequest) returns (BatchDeleteURLsResponse);
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+}
+
+message CreateShortURLRequest {
+  string original_url = 1;
+}
+
+message CreateShortURLResponse {
+  string short_url = 1;
+  bool url_exists = 2;
+}
+
+message GetOriginalURLRequest {
+  string short_id = 1;
+}
+
+message GetOriginalURLResponse {
+  string original_url = 1;
+  bool found = 2;
+  bool is_deleted = 3;
+}
+
+message ShortenURLRequest {
+  string url = 1;
+}
+
+message ShortenURLResponse {
+  string result = 1;
+  bool url_exists = 2;
+}
+
+message ExpandURLRequest {
+  string short_id = 1;
+}
+
+message ExpandURLResponse {
+  string url = 1;
+  bool found = 2;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  bool database_available = 1;
+}
+
+message BatchRequest {
+  string correlation_id = 1;
+  string original_url = 2;
+}
+
+message BatchResponse {
+  string correlation_id = 1;
+  string short_url = 2;
+}
+
+message BatchShortenRequest {
+  repeated BatchRequest batch_requests = 1;
+}
+
+message BatchShortenResponse {
+  repeated BatchResponse batch_responses = 1;
+  bool has_conflicts = 2;
+}
+
+message GetUserURLsRequest {}
+
+message ShortURLResponse {
+  string short_url = 1;
+  string original_url = 2;
+}
+
+message GetUserURLsResponse {
+  repeated ShortURLResponse user_urls = 1;
+}
+
+message BatchDeleteURLsRequest {
+  repeated string short_ids = 1;
+}
+
+message BatchDeleteURLsResponse {
+  bool success = 1;
+}
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  int32 urls_count = 1;
+  int32 users_count = 2;
+}
