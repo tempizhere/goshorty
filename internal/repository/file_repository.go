@@ -353,6 +353,49 @@ func (r *FileRepository) BatchDelete(userID string, ids []string) error {
 	return nil
 }
 
+// GetStats возвращает статистику сервиса: количество URL и пользователей
+func (r *FileRepository) GetStats() (int, int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	file, err := os.Open(r.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			r.logger.Error("Failed to close file", zap.Error(closeErr))
+		}
+	}()
+
+	urlCount := 0
+	userSet := make(map[string]struct{})
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var record URLRecord
+		if unmarshalErr := json.Unmarshal(scanner.Bytes(), &record); unmarshalErr != nil {
+			r.logger.Warn("Skipping invalid JSON line", zap.String("line", string(scanner.Bytes())), zap.Error(unmarshalErr))
+			continue
+		}
+		if !record.DeletedFlag {
+			urlCount++
+			if record.UserID != "" {
+				userSet[record.UserID] = struct{}{}
+			}
+		}
+	}
+
+	if scanErr := scanner.Err(); scanErr != nil {
+		return 0, 0, scanErr
+	}
+
+	return urlCount, len(userSet), nil
+}
+
 // Close закрывает ресурсы репозитория (убеждается, что все данные записаны в файл)
 func (r *FileRepository) Close() error {
 	r.mutex.Lock()

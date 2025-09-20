@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -11,11 +12,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/tempizhere/goshorty/internal/app"
 	"github.com/tempizhere/goshorty/internal/config"
+	grpcserver "github.com/tempizhere/goshorty/internal/grpc"
+	"github.com/tempizhere/goshorty/internal/grpc/proto"
 	"github.com/tempizhere/goshorty/internal/log"
 	"github.com/tempizhere/goshorty/internal/middleware"
 	"github.com/tempizhere/goshorty/internal/repository"
 	"github.com/tempizhere/goshorty/internal/service"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // Глобальные переменные для информации о сборке
@@ -113,6 +117,14 @@ func main() {
 		appInstance.HandleBatchDeleteURLs(w, r)
 	})
 
+	// Маршрут для статистики с проверкой доверенной подсети
+	r.Route("/api/internal", func(r chi.Router) {
+		r.Use(middleware.TrustedSubnetMiddleware(cfg.TrustedSubnet, logger))
+		r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
+			appInstance.HandleStats(w, r)
+		})
+	})
+
 	// Создаём HTTP сервер с настройками для graceful shutdown
 	server := &http.Server{
 		Addr:         cfg.RunAddr,
@@ -122,12 +134,28 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Создаём gRPC сервер если включен
+	var grpcSrv *grpc.Server
+	if cfg.EnableGRPC {
+		grpcService := grpcserver.NewServer(svc, db, logger)
+
+		grpcSrv = grpc.NewServer(
+			grpc.ChainUnaryInterceptor(
+				grpcserver.LoggingInterceptor(logger),
+				grpcserver.AuthInterceptor(svc, logger),
+				grpcserver.TrustedSubnetInterceptor(cfg.TrustedSubnet, logger),
+			),
+		)
+
+		proto.RegisterShortenerServiceServer(grpcSrv, grpcService)
+	}
+
 	// Graceful shutdown
 	// Создаем контекст, который будет отменен при получении сигнала завершения
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer stop()
 
-	// Запускаем сервер в горутине
+	// Запускаем HTTP сервер в горутине
 	go func() {
 		var err error
 		if cfg.EnableHTTPS {
@@ -138,9 +166,23 @@ func main() {
 			err = server.ListenAndServe()
 		}
 		if err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server error", zap.Error(err))
+			logger.Fatal("HTTP server error", zap.Error(err))
 		}
 	}()
+
+	// Запускаем gRPC сервер в горутине если включен
+	if grpcSrv != nil {
+		go func() {
+			lis, err := net.Listen("tcp", cfg.GRPCAddr)
+			if err != nil {
+				logger.Fatal("Failed to listen gRPC", zap.Error(err))
+			}
+			logger.Info("Starting gRPC server", zap.String("address", cfg.GRPCAddr))
+			if err := grpcSrv.Serve(lis); err != nil {
+				logger.Error("gRPC server error", zap.Error(err))
+			}
+		}()
+	}
 
 	// Ждем сигнала завершения
 	<-ctx.Done()
@@ -150,9 +192,14 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Graceful shutdown
+	// Graceful shutdown HTTP сервера
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server shutdown error", zap.Error(err))
+		logger.Error("HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Graceful shutdown gRPC сервера
+	if grpcSrv != nil {
+		grpcSrv.GracefulStop()
 	}
 
 	// Закрываем репозиторий

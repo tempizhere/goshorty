@@ -13,21 +13,27 @@ import (
 
 // Config содержит настройки приложения для сервиса сокращения URL
 type Config struct {
-	RunAddr         string // Адрес и порт для запуска сервера
+	RunAddr         string // Адрес и порт для запуска HTTP сервера
+	GRPCAddr        string // Адрес и порт для запуска gRPC сервера
 	BaseURL         string // Базовый URL для генерации коротких ссылок
 	FileStoragePath string // Путь к файлу для хранения URL
 	DatabaseDSN     string // Строка подключения к базе данных PostgreSQL
 	JWTSecret       string // Секретный ключ для подписи JWT токенов
 	EnableHTTPS     bool   // Флаг включения HTTPS
+	EnableGRPC      bool   // Флаг включения gRPC сервера
+	TrustedSubnet   string // Доверенная подсеть в формате CIDR для доступа к внутренним API
 }
 
 // ConfigFile представляет структуру для десериализации JSON-файла конфигурации
 type ConfigFile struct {
 	ServerAddress   string `json:"server_address"`
+	GRPCAddress     string `json:"grpc_address"`
 	BaseURL         string `json:"base_url"`
 	FileStoragePath string `json:"file_storage_path"`
 	DatabaseDSN     string `json:"database_dsn"`
 	EnableHTTPS     bool   `json:"enable_https"`
+	EnableGRPC      bool   `json:"enable_grpc"`
+	TrustedSubnet   string `json:"trusted_subnet"`
 }
 
 // loadConfigFile загружает конфигурацию из JSON-файла
@@ -60,20 +66,26 @@ func loadConfigFile(path string) (*ConfigFile, error) {
 func NewConfig() (*Config, error) {
 	cfg := &Config{
 		RunAddr:         ":8080",
+		GRPCAddr:        ":3200",
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: "internal/storage/storage.json",
 		DatabaseDSN:     "",
 		JWTSecret:       "default_jwt_secret",
 		EnableHTTPS:     false,
+		EnableGRPC:      false,
+		TrustedSubnet:   "",
 	}
 
 	// Регистрируем флаги
-	flagRunAddr := flag.String("a", ":8080", "address and port to run server")
+	flagRunAddr := flag.String("a", ":8080", "address and port to run HTTP server")
+	flagGRPCAddr := flag.String("grpc-addr", ":3200", "address and port to run gRPC server")
 	flagBaseURL := flag.String("b", "http://localhost:8080", "base URL for shortened links")
 	flagFilePath := flag.String("f", "internal/storage/storage.json", "path to file for storing URLs")
 	flagDatabaseDSN := flag.String("d", "", "database DSN for PostgreSQL")
 	flagJWTSecret := flag.String("j", "default_jwt_secret", "JWT secret key")
 	flagEnableHTTPS := flag.Bool("s", false, "enable HTTPS server")
+	flagEnableGRPC := flag.Bool("enable-grpc", false, "enable gRPC server")
+	flagTrustedSubnet := flag.String("t", "", "trusted subnet CIDR for internal API access")
 	flagConfigFile := flag.String("c", "", "path to configuration file")
 	flagConfigFileAlt := flag.String("config", "", "path to configuration file")
 	flag.Parse()
@@ -98,6 +110,9 @@ func NewConfig() (*Config, error) {
 		if configFile.ServerAddress != "" {
 			cfg.RunAddr = configFile.ServerAddress
 		}
+		if configFile.GRPCAddress != "" {
+			cfg.GRPCAddr = configFile.GRPCAddress
+		}
 		if configFile.BaseURL != "" {
 			cfg.BaseURL = configFile.BaseURL
 		}
@@ -108,6 +123,10 @@ func NewConfig() (*Config, error) {
 			cfg.DatabaseDSN = configFile.DatabaseDSN
 		}
 		cfg.EnableHTTPS = configFile.EnableHTTPS
+		cfg.EnableGRPC = configFile.EnableGRPC
+		if configFile.TrustedSubnet != "" {
+			cfg.TrustedSubnet = configFile.TrustedSubnet
+		}
 	}
 
 	// Проверяем переменные окружения
@@ -115,6 +134,12 @@ func NewConfig() (*Config, error) {
 		cfg.RunAddr = addr
 	} else if *flagRunAddr != "" {
 		cfg.RunAddr = *flagRunAddr
+	}
+
+	if grpcAddr, grpcSet := os.LookupEnv("GRPC_ADDRESS"); grpcSet {
+		cfg.GRPCAddr = grpcAddr
+	} else if *flagGRPCAddr != "" {
+		cfg.GRPCAddr = *flagGRPCAddr
 	}
 
 	if url, urlSet := os.LookupEnv("BASE_URL"); urlSet {
@@ -147,9 +172,24 @@ func NewConfig() (*Config, error) {
 		cfg.EnableHTTPS = *flagEnableHTTPS
 	}
 
+	if enableGRPC, grpcSet := os.LookupEnv("ENABLE_GRPC"); grpcSet {
+		cfg.EnableGRPC = enableGRPC == "true"
+	} else {
+		cfg.EnableGRPC = *flagEnableGRPC
+	}
+
+	if trustedSubnet, subnetSet := os.LookupEnv("TRUSTED_SUBNET"); subnetSet {
+		cfg.TrustedSubnet = trustedSubnet
+	} else if *flagTrustedSubnet != "" {
+		cfg.TrustedSubnet = *flagTrustedSubnet
+	}
+
 	// Валидация значений
 	if !strings.Contains(cfg.RunAddr, ":") {
 		cfg.RunAddr = ":" + cfg.RunAddr
+	}
+	if !strings.Contains(cfg.GRPCAddr, ":") {
+		cfg.GRPCAddr = ":" + cfg.GRPCAddr
 	}
 	if !strings.HasPrefix(cfg.BaseURL, "http://") && !strings.HasPrefix(cfg.BaseURL, "https://") {
 		cfg.BaseURL = "http://" + cfg.BaseURL

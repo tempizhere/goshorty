@@ -24,6 +24,8 @@ type Repository interface {
 	GetURLsByUserID(userID string) ([]models.URL, error)
 	// BatchDelete помечает URL как удалённые для указанного пользователя
 	BatchDelete(userID string, ids []string) error
+	// GetStats возвращает статистику сервиса: количество URL и пользователей
+	GetStats() (int, int, error)
 	// Close закрывает ресурсы репозитория (соединения, файлы и т.д.)
 	Close() error
 }
